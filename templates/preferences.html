@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Your subscription · BoardCast{% endblock %}
+{% block content %}
+<main class="wrap">
+  <section class="card stack">
+    <h1 style="font-size:28px">Your Campus Weekly</h1>
+    <p class="muted" style="margin:0">{{ sub.email }}</p>
+    {% if sub.active %}
+    <p style="margin:0">You get Campus Weekly every Monday at 8am, plus a reminder an hour before any event you open from it.</p>
+    <div class="row"><a class="btn danger" href="/unsubscribe?token={{ token }}">Unsubscribe</a></div>
+    {% else %}
+    <p style="margin:0">You're not subscribed right now.</p>
+    <div class="row"><a class="btn" href="/subscribe">Subscribe again</a></div>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

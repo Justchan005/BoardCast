@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>{{ plan.subject_line }}</title>
+</head>
+<!-- Campus Weekly reads like a newspaper of the clubs' own submissions: a headline and teaser on
+     top (the Editor agent), then fixed numbered sections. Each item is the club's own words with
+     its poster below. Table layout + inline styles on purpose: Outlook ignores most modern CSS. -->
+{%- macro when(e) -%}{{ e.date|nice_date }}{% if e.start_time %}, {{ e.start_time|hm }}{% if e.end_time %}–{{ e.end_time|hm }}{% endif %}{% endif %}{%- endmacro -%}
+{%- macro words(item) -%}{{ (item.description or item.data.summary or '')|linkify_description }}{%- endmacro -%}
+{%- macro link(item, label) -%}<a href="{{ base }}/r/{{ item.id }}{{ save_q }}" style="color:#0B7BB5;font-weight:bold;">{{ label }}</a>{%- endmacro -%}
+
+{%- macro poster(item, width) -%}{% set d = item.data %}
+  {%- if item.show_poster -%}
+  <div style="padding:12px 0 4px;text-align:center;"><img src="{{ base }}/p/{{ item.id }}.jpg" width="{{ width }}" alt="Poster: {{ d.title or d.team }}{% if d.date %}, {{ d.date|nice_date }}{% endif %}{% if d.start_time %} {{ d.start_time|hm }}{% endif %}{% if d.venue %}, {{ d.venue }}{% endif %}" style="display:inline-block;width:100%;max-width:{{ width }}px;height:auto;border:1px solid #E3E3E3;border-radius:8px;"></div>
+  {%- endif -%}
+{%- endmacro -%}
+
+{%- macro box(section) -%}
+  <tr><td style="padding:0 24px 16px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #2B2B2B;border-radius:8px;">
+      <tr><td style="padding:20px 22px;">
+        <div style="font-family:'Arial Black',Arial,Helvetica,sans-serif;font-size:19px;font-weight:900;letter-spacing:.3px;padding-bottom:12px;">{{ section.title }} {{ section.emoji }}</div>
+        {{ caller() }}
+      </td></tr>
+    </table>
+  </td></tr>
+{%- endmacro -%}
+
+<body style="margin:0;padding:0;background:#F4F4F2;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F4F2;">
+<tr><td align="center" style="padding:24px 10px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#FFFFFF;font-family:Arial,Helvetica,sans-serif;color:#1B1B1B;">
+
+  <tr><td align="right" style="padding:18px 24px 0;font-size:13px;color:#444;">
+    {{ issue.week_start.strftime('%B') }} {{ issue.week_start.day }}, {{ issue.week_start.year }}{% if issue_id %} &nbsp;|&nbsp; <a href="{{ base }}/m/{{ issue_id }}" style="color:#1B1B1B;">Read online</a>{% endif %}
+  </td></tr>
+
+  <tr><td align="center" style="padding:22px 24px 6px;">
+    <div style="font-size:11px;letter-spacing:3px;color:#0B7BB5;font-weight:bold;">BOARDCAST</div>
+    <div style="font-family:'Arial Black',Arial,Helvetica,sans-serif;font-size:26px;font-weight:900;letter-spacing:1px;">CAMPUS WEEKLY</div>
+  </td></tr>
+
+  <tr><td style="padding:22px 24px 22px;">
+    <h1 style="margin:0 0 10px;font-size:30px;line-height:1.2;font-weight:bold;">{{ plan.headline }}</h1>
+    {% if plan.teaser %}<p style="margin:0;font-size:17px;line-height:1.5;color:#333;">{{ plan.teaser }}</p>{% endif %}
+  </td></tr>
+
+  {% for section in sections %}
+
+  {% if section.key == "glance" %}
+  {% call box(section) %}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">
+      {% for ev in issue.events %}{% set e = ev.data %}
+      <tr>
+        <td style="padding:9px 8px 9px 0;border-bottom:1px solid #E3E3E3;white-space:nowrap;font-weight:bold;" valign="top">{{ e.date|nice_date }}</td>
+        <td style="padding:9px 8px;border-bottom:1px solid #E3E3E3;white-space:nowrap;" valign="top">{{ e.start_time|hm }}</td>
+        <td style="padding:9px 8px;border-bottom:1px solid #E3E3E3;" valign="top"><b>{{ e.title }}</b><br><span style="color:#666;font-size:13px;">{{ e.venue or 'Venue TBC' }}</span></td>
+        <td align="right" style="padding:9px 0 9px 8px;border-bottom:1px solid #E3E3E3;white-space:nowrap;" valign="top">{% if e.fee %}<span style="display:inline-block;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:bold;{% if e.fee is free %}background:#22C55E;color:#FFFFFF;{% else %}background:#EFEFEF;color:#1B1B1B;{% endif %}">{{ e.fee }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% endcall %}
+  {% endif %}
+
+  {% if section.key == "events" %}
+  {% call box(section) %}
+    {% for ev in events %}{% set e = ev.data %}
+    <div style="font-size:15px;line-height:1.65;{% if not loop.first %}padding-top:18px;border-top:1px solid #EFEFEF;margin-top:18px;{% endif %}">
+      {% if spotlight and ev.id == spotlight.id %}<div style="font-size:11px;letter-spacing:1.5px;font-weight:bold;color:#0B7BB5;padding-bottom:4px;">IN THE SPOTLIGHT</div>{% endif %}
+      {% with item=ev %}{% include '_publication_copy.html' %}{% endwith %}
+    </div>
+    {{ poster(ev, 520 if (spotlight and ev.id == spotlight.id) else 300) }}
+    {% endfor %}
+  {% endcall %}
+  {% endif %}
+
+  {% if section.key == "wins" %}
+  {% call box(section) %}
+    {% for a in issue.achievements %}{% set d = a.data %}
+    <div style="font-size:15px;line-height:1.65;{% if not loop.first %}padding-top:18px;border-top:1px solid #EFEFEF;margin-top:18px;{% endif %}">
+      {% with item=a %}{% include '_publication_copy.html' %}{% endwith %}
+    </div>
+    {{ poster(a, 300) }}
+    {% endfor %}
+  {% endcall %}
+  {% endif %}
+
+  {% if section.key == "opportunities" %}
+  {% call box(section) %}
+    {% for n in issue.announcements %}{% set d = n.data %}
+    <div style="font-size:15px;line-height:1.65;{% if not loop.first %}padding-top:18px;border-top:1px solid #EFEFEF;margin-top:18px;{% endif %}">
+      {% with item=n %}{% include '_publication_copy.html' %}{% endwith %}
+    </div>
+    {{ poster(n, 300) }}
+    {% endfor %}
+  {% endcall %}
+  {% endif %}
+
+  {% endfor %}
+
+  <tr><td style="padding:12px 24px 28px;font-size:12px;line-height:1.6;color:#666;text-align:center;">
+    Every item was submitted by an APU club or office and approved by Student Affairs, in the club's own words.<br>
+    BoardCast never asks for your password.<br>
+    {% if prefs_url %}<a href="{{ prefs_url }}" style="color:#666;">Manage subscription</a> · {% endif %}
+    {% if unsubscribe_url %}<a href="{{ unsubscribe_url }}" style="color:#666;">Unsubscribe</a>{% endif %}
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>

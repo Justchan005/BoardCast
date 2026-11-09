@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Club report · BoardCast{% endblock %}
+{% block head %}
+{% if client_id %}<script src="https://accounts.google.com/gsi/client" async defer></script>{% endif %}
+<script src="/static/staff.js?v=20261109-3"></script>
+{% endblock %}
+{% block topbar_right %}<div class="row"><span id="who" class="muted">Staff sign-in</span><button id="signout" class="text-button" type="button" hidden>Switch account</button></div>{% endblock %}
+{% block content %}
+<main class="wrap wide">
+
+  <section id="signin" class="card stack" style="max-width:480px;margin:0 auto">
+    <h1 style="font-size:28px">Sign in to BoardCast</h1>
+    <p class="muted" style="margin:0">For club reps and Student Affairs. Use the Google account registered with Student Affairs.</p>
+    {% if client_id %}
+    <div id="g_id_onload" data-client_id="{{ client_id }}" data-callback="onSignIn" data-auto_prompt="false"></div>
+    <div class="g_id_signin" data-type="standard" data-size="large" data-text="signin_with"></div>
+    {% endif %}
+    {% if dev_mode %}
+    <form id="devform" class="stack" style="gap:8px">
+      <label for="devemail">Dev mode: act as</label>
+      <input id="devemail" type="email" placeholder="clubrep.demo@mail.apu.edu.my" required>
+      <button class="btn secondary" type="submit">Continue</button>
+    </form>
+    {% endif %}
+    <p id="signin-error" class="alert bad" role="alert" hidden></p>
+  </section>
+
+  <section id="app" hidden>
+    <div class="row" style="justify-content:space-between;margin-bottom:16px">
+      <div>
+        <h1 style="font-size:30px" id="heading">Club report</h1>
+        <p class="muted" style="margin:4px 0 0" id="sub"></p>
+      </div>
+      <div class="row">
+        <a class="btn" href="/submit">New submission</a>
+        <a class="btn secondary" href="/admin">Review queue</a>
+        <button class="btn secondary" id="refresh" type="button">Refresh</button>
+      </div>
+    </div>
+
+    <div class="cards3" id="totals" style="margin-bottom:16px"></div>
+
+    <div class="card" style="padding:16px;overflow-x:auto">
+      <table class="clicks" style="min-width:640px">
+        <thead><tr>
+          <th>Item</th><th id="club-col" hidden>Club</th><th>Date</th><th>Status</th>
+          <th style="text-align:right">Register</th><th style="text-align:right">Calendar</th>
+          <th style="text-align:right" title="Students who will get a reminder 1 hour before">Reminders</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="muted">Register and Calendar count every click from the email and web magazine. Reminders counts students who clicked from their own email and will be reminded an hour before the event.</p>
+  </section>
+</main>
+
+<script>
+const {api, el} = Staff;
+let me = null;
+
+async function load() {
+  const res = await api("/admin/api/club");
+  const sa = res.role === "student_affairs";
+  document.getElementById("heading").textContent = sa ? "Club report: all clubs" : "Your club's report";
+  document.getElementById("sub").textContent = sa ? "Every submission, all clubs" : "Club: " + (res.club_id || "-");
+  document.getElementById("club-col").hidden = !sa;
+
+  const t = res.totals, totals = document.getElementById("totals");
+  totals.replaceChildren(...[["Items", res.rows.length], ["Register clicks", t.register],
+                             ["Calendar clicks", t.calendar], ["Reminders set", t.saved]].map(([label, n]) =>
+    el("div", {class: "card", style: "padding:18px"},
+      el("div", {style: "font-size:28px;font-weight:700"}, String(n)), el("div", {class: "muted"}, label))));
+
+  const tb = document.getElementById("rows"); tb.replaceChildren();
+  if (!res.rows.length) tb.append(el("tr", {}, el("td", {colspan: "7", class: "muted"}, "No submissions yet.")));
+  for (const r of res.rows) {
+    const title = el("td", {}, el("b", {}, r.title || "(untitled)"), el("div", {class: "muted"}, r.type));
+    if (r.issues && r.issues.length) title.append(el("ul", {class: "problems"}, ...r.issues.map(p => el("li", {}, p))));
+    if (r.status === "rejected" && r.rejection_reason) {
+      title.append(el("p", {class: "alert bad", style: "white-space:pre-wrap"}, "Reason: " + r.rejection_reason));
+      if (!sa) title.append(el("a", {href: "/submit?item=" + encodeURIComponent(r.id), class:"text-link"}, "Correct and resubmit"));
+      if (sa && r.rejection_notification_status === "failed") {
+        title.append(el("button", {class: "btn secondary", type: "button", onclick: async (event) => {
+          const button = event.currentTarget;
+          button.disabled = true;
+          try {
+            const result = await api(`/admin/api/items/${r.id}/decision`, {
+              method: "POST", body: JSON.stringify({decision: "reject", note: r.rejection_reason, retry_notification: true})});
+            if (result.warning) alert(result.warning);
+            await load();
+          } catch (e) { alert(e.message); button.disabled = false; }
+        }}, "Retry rejection email"));
+      }
+    }
+    const cells = [title];
+    if (sa) cells.push(el("td", {}, r.club_id || "-"));
+    cells.push(el("td", {}, r.date ? String(r.date).slice(0, 10) : "-"),
+               el("td", {}, el("span", {class: "pill " + r.status}, r.status)),
+               ...["register", "calendar", "saved"].map(k => el("td", {class: "n"}, r.type === "event" ? String(r[k]) : "-")));
+    tb.append(el("tr", {}, ...cells));
+  }
+}
+
+Staff.init(async (who) => {
+  me = who;
+  document.getElementById("app").hidden = false;
+  try { await load(); } catch (e) { alert(e.message); }
+});
+document.getElementById("refresh").addEventListener("click", load);
+</script>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Subscribe · BoardCast{% endblock %}
+{% block content %}
+<main class="wrap">
+  <form class="card stack" method="post" action="/subscribe">
+    <h1 style="font-size:32px">Every APU event, once a week</h1>
+    <p class="muted" style="margin:0">Campus Weekly arrives every Monday at 8am: the week's club events, campus wins and opportunities, as submitted by APU clubs and approved by Student Affairs. No daily emails.</p>
+    {% if error %}<p class="alert bad" role="alert">{{ error }}</p>{% endif %}
+    <div>
+      <label for="email">APU email</label>
+      <input id="email" name="email" type="email" required placeholder="tp012345@mail.apu.edu.my" autocomplete="email">
+    </div>
+    <button class="btn" type="submit">Send my code</button>
+    <p class="muted" style="margin:0">We'll email a 6-digit code to confirm it's you. BoardCast never asks for your password.</p>
+  </form>
+</main>
+{% endblock %}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "${BOT_ID}",
+  "developer": {
+    "name": "BoardCast team (APU Cloud Innovation Hackathon 2026)",
+    "websiteUrl": "${PUBLIC_BASE_URL}",
+    "privacyUrl": "${PUBLIC_BASE_URL}/subscribe",
+    "termsOfUseUrl": "${PUBLIC_BASE_URL}/subscribe"
+  },
+  "name": {
+    "short": "BoardCast",
+    "full": "BoardCast: APU Campus Weekly"
+  },
+  "description": {
+    "short": "Submit club posters and review them for the APU Campus Weekly.",
+    "full": "Club reps attach an event poster and BoardCast reads it, asks only for missing details, checks it and sends it to Student Affairs. Student Affairs reviews, approves or rejects items and can hold the Monday newsletter. BoardCast never asks for your password."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#1F4FD8",
+  "bots": [
+    {
+      "botId": "${BOT_ID}",
+      "scopes": ["personal"],
+      "supportsFiles": true,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": ["personal"],
+          "commands": [
+            {"title": "Submit a poster", "description": "Attach a poster and tell me if it's an event, announcement or achievement"},
+            {"title": "My submissions", "description": "List your club's items and their status"},
+            {"title": "What's waiting for review?", "description": "Student Affairs: pending items"}
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": ["${PUBLIC_HOST}"]
+}

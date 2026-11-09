@@ -1,0 +1,5 @@
+microsoft-agents-hosting-fastapi>=1.9,<2
+microsoft-agents-authentication-msal>=1.9,<2
+google-adk>=1.0
+python-dotenv>=1.0
+pillow>=10.4

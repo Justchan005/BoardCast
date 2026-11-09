@@ -1,0 +1,2 @@
+{"file": "ai-agent-workshop.jpg", "type": "event", "expected": {"title": "Build your first AI agent", "organiser": "Cloud & AI Society", "date": "2026-11-11", "start_time": "16:00", "end_time": "18:00", "venue": "Auditorium 3", "fee": "Free", "category": "tech", "registration": {"link": "https://forms.gle/REPLACE"}}}
+{"file": "futsal-friendly.jpg", "type": "event", "expected": {"title": "Futsal friendly match", "date": null, "start_time": "17:00", "venue": "Sports court", "fee": null, "category": "sports"}}

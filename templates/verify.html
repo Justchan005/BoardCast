@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Enter your code · BoardCast{% endblock %}
+{% block content %}
+<main class="wrap">
+  <form class="card stack" method="post" action="/subscribe/verify">
+    <h1 style="font-size:28px">Check your APU inbox</h1>
+    <p class="muted" style="margin:0">We sent a 6-digit code to <b>{{ email }}</b>. It expires 15 minutes after your first request. Requesting another code replaces the previous code and keeps the original expiry.</p>
+    {% if error %}<p class="alert bad" role="alert">{{ error }}</p>{% endif %}
+    <input type="hidden" name="t" value="{{ token }}">
+    <div>
+      <label for="code">Code</label>
+      <input id="code" name="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required class="code-input" autocomplete="one-time-code">
+    </div>
+    <button class="btn" type="submit">Confirm</button>
+    <p class="muted" style="margin:0">Use the latest code. After five incorrect attempts, wait until it expires before requesting another.</p>
+    <a href="/subscribe" class="muted">Request another code or change email</a>
+  </form>
+</main>
+{% endblock %}

@@ -1,0 +1,4 @@
+google-adk>=1.0
+google-cloud-storage>=2.18
+google-auth>=2.35
+requests>=2.32

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ plan.subject_line }}{% endblock %}
+{% block body_class %}mag{% endblock %}
+{% block topbar_right %}
+<nav aria-label="Sections" class="row" style="gap:0">
+  {% for s in sections %}<a href="#{{ s.key }}">{{ s.title.split('. ', 1)[1]|capitalize }}</a>{% endfor %}
+</nav>
+{% endblock %}
+{% block content %}
+{#- Same structure as the email: headline + teaser, then numbered sections of the clubs' own words and posters. -#}
+{%- macro when(e) -%}{{ e.date|nice_date }}{% if e.start_time %}, {{ e.start_time|hm }}{% if e.end_time %}–{{ e.end_time|hm }}{% endif %}{% endif %}{%- endmacro -%}
+{%- macro words(item) -%}{{ (item.description or item.data.summary or '')|linkify_description }}{%- endmacro -%}
+{%- macro poster(item, big=False) -%}{% set d = item.data %}
+  {%- if item.show_poster -%}
+  <a class="cw-poster{% if big %} big{% endif %}" href="/p/{{ item.id }}.jpg" target="_blank" rel="noopener" aria-label="Open the full poster: {{ d.title or d.team }}">
+    <img src="/p/{{ item.id }}.jpg" alt="Poster: {{ d.title or d.team }}" loading="lazy"></a>
+  {%- endif -%}
+{%- endmacro -%}
+
+<main class="cw">
+  <p class="cw-date">{{ issue.week_start.strftime('%B') }} {{ issue.week_start.day }}, {{ issue.week_start.year }}</p>
+  <div class="cw-mast"><small>BOARDCAST</small><b>CAMPUS WEEKLY</b></div>
+  <h1 class="cw-headline">{{ plan.headline }}</h1>
+  {% if plan.teaser %}<p class="cw-teaser">{{ plan.teaser }}</p>{% endif %}
+
+  {% for section in sections %}
+  <section class="cw-box" id="{{ section.key }}">
+    <h2>{{ section.title }} <span aria-hidden="true">{{ section.emoji }}</span></h2>
+
+    {% if section.key == "glance" %}
+    <table class="cw-glance">
+      {% for ev in issue.events %}{% set e = ev.data %}
+      <tr><th scope="row">{{ e.date|nice_date }}</th><td>{{ e.start_time|hm }}</td>
+          <td><b>{{ e.title }}</b><small>{{ e.venue or 'Venue TBC' }}</small></td>
+          <td>{% if e.fee %}<span class="fee {{ 'free' if e.fee is free else '' }}">{{ e.fee }}</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+
+    {% elif section.key == "events" %}
+    {% for ev in events %}{% set e = ev.data %}
+    <article class="cw-item">
+      {% if spotlight and ev.id == spotlight.id %}<span class="cw-tag">In the spotlight</span>{% endif %}
+      <p>{% with item=ev, base='', save_q='' %}{% include '_publication_copy.html' %}{% endwith %}</p>
+      {{ poster(ev, big=(spotlight and ev.id == spotlight.id)) }}
+    </article>
+    {% endfor %}
+
+    {% elif section.key == "wins" %}
+    {% for a in issue.achievements %}{% set d = a.data %}
+    <article class="cw-item">
+      <p>{% with item=a, base='', save_q='' %}{% include '_publication_copy.html' %}{% endwith %}</p>
+      {{ poster(a) }}
+    </article>
+    {% endfor %}
+
+    {% elif section.key == "opportunities" %}
+    {% for n in issue.announcements %}{% set d = n.data %}
+    <article class="cw-item">
+      <p>{% with item=n, base='', save_q='' %}{% include '_publication_copy.html' %}{% endwith %}</p>
+      {{ poster(n) }}
+    </article>
+    {% endfor %}
+    {% endif %}
+  </section>
+  {% else %}
+  <p class="cw-teaser">Nothing new was submitted since the last issue.</p>
+  {% endfor %}
+</main>
+<footer>
+  Every item was submitted by an APU club or office and approved by Student Affairs, in the club's own words. BoardCast never asks for your password.<br>
+  <a href="/subscribe">Get Campus Weekly every Monday</a>
+</footer>
+{% endblock %}

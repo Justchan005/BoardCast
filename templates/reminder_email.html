@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>Starting soon: {{ e.title }}</title>
+</head>
+<!-- Table layout + inline styles on purpose: Outlook desktop ignores most modern CSS. -->
+<body style="margin:0;padding:0;background:#EEF0F3;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EEF0F3;">
+<tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#FFFFFF;border-radius:12px;font-family:Arial,Helvetica,sans-serif;color:#12141A;">
+  <tr><td style="padding:28px 28px 8px;">
+    <div style="font-size:20px;font-weight:bold;">BoardCast</div>
+    <div style="font-size:13px;color:#5B6170;">Reminder for an event you saved</div>
+  </td></tr>
+  <tr><td style="padding:8px 28px 20px;">
+    <h1 style="margin:0 0 8px;font-size:24px;line-height:1.25;">{{ e.title }} starts soon</h1>
+    <p style="margin:0;font-size:15px;line-height:1.6;color:#3A3F4B;">
+      {{ e.date|nice_date }}, {{ e.start_time|hm }}{% if e.end_time %}–{{ e.end_time|hm }}{% endif %}<br>
+      {{ e.venue or 'Venue to be confirmed' }}{% if e.fee %} · {{ e.fee }}{% endif %}<br>
+      {% if e.organiser %}by {{ e.organiser }}{% endif %}
+    </p>
+    {% if e.registration and e.registration.link %}
+    <p style="margin:16px 0 0;"><a href="{{ base }}/r/{{ item.id }}" style="display:inline-block;background:#1F4FD8;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:bold;padding:10px 16px;border-radius:8px;">Registration page</a></p>
+    {% endif %}
+  </td></tr>
+  <tr><td style="padding:20px 28px 28px;font-size:12px;line-height:1.6;color:#5B6170;border-top:1px solid #E3E6EC;">
+    You get this because you registered for or added this event from Campus Weekly. BoardCast never asks for your password.<br>
+    <a href="{{ unsubscribe_url }}" style="color:#1F4FD8;">Unsubscribe</a>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>

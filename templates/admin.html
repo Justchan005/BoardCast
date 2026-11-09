@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Publication review · BoardCast{% endblock %}
+{% block head %}
+{% if client_id %}<script src="https://accounts.google.com/gsi/client" async defer></script>{% endif %}
+<script src="/static/staff.js?v=20261109-3" defer></script><script src="/static/review.js?v=20261109-3" defer></script>
+{% endblock %}
+{% block topbar_right %}<div class="row"><span id="who" class="muted">Staff sign-in</span><button id="signout" class="text-button" type="button" hidden>Switch account</button></div>{% endblock %}
+{% block content %}
+<main class="wrap review-wrap">
+{% with default_email='studentaffairs.demo@apu.edu.my' %}{% include '_staff_signin.html' %}{% endwith %}
+<section id="app" hidden>
+  <header class="page-heading"><div><span class="eyebrow">CAMPUS WEEKLY / EDITORIAL DESK</span><h1>Publication review</h1><p class="muted">Compare the source. Check the copy. Approve with confidence.</p></div>
+  <nav class="row" aria-label="Staff pages"><a class="btn secondary" href="/submit">Club submissions</a><a class="btn secondary" href="/admin/club">Report</a><button id="refresh" class="btn secondary" type="button">Refresh</button></nav></header>
+  <p id="notice" class="alert" role="status" hidden></p>
+  <section id="issue-card" class="issue-bar" hidden>
+    <div><span class="eyebrow">NEXT EDITION</span><p id="issue-status" class="muted">No preview yet.</p></div>
+    <div class="row"><a id="issue-link" class="btn secondary" href="#" target="_blank" rel="noopener" hidden>Read edition</a><button id="hold" class="btn danger" type="button" disabled>Hold issue</button>
+    {% if local_mode %}<button id="build-preview" class="btn secondary" type="button">Build local preview</button><button id="publish-local" class="btn" type="button" disabled>Publish to local outbox</button><a href="/demo/outbox" class="text-link" target="_blank">Open outbox</a>{% endif %}</div>
+    {% if local_mode %}<small class="muted issue-note">Local demo: emails are saved on this computer. The preview includes approved items from today onward.</small>{% endif %}
+  </section>
+  <div class="review-layout">
+    <aside class="queue-pane">
+      <label for="search">Find a submission</label><input id="search" type="search" placeholder="Title, club or uploader">
+      <div class="tabs queue-tabs" role="tablist" aria-label="Submission status">
+        <button id="tab-pending" class="tab" role="tab" aria-selected="true" aria-controls="list" data-status="pending" type="button">Waiting <span id="count-pending">0</span></button>
+        <button id="tab-draft" class="tab" role="tab" aria-selected="false" aria-controls="list" tabindex="-1" data-status="draft" type="button">Needs fixing <span id="count-draft">0</span></button>
+        <button id="tab-approved" class="tab" role="tab" aria-selected="false" aria-controls="list" tabindex="-1" data-status="approved" type="button">Approved <span id="count-approved">0</span></button>
+      </div>
+      <div id="list" role="tabpanel" aria-labelledby="tab-pending" aria-live="polite"></div>
+    </aside>
+    <section id="detail" class="review-detail card" aria-live="polite"><div class="empty-state"><h2>Select a submission</h2><p class="muted">The source poster and publication preview will appear here.</p></div></section>
+  </div>
+</section>
+</main>
+{% endblock %}
