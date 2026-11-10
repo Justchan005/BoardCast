@@ -1,6 +1,7 @@
 """Web intake, source-image handling, review permissions and publication-preview regressions."""
 import io
 from datetime import date, datetime, timezone
+from html.parser import HTMLParser
 
 import pytest
 from fastapi.testclient import TestClient
@@ -120,6 +121,70 @@ def test_student_staff_and_demo_pages_render(api, path):
     response = api.get(path)
     assert response.status_code == 200
     assert "<main" in response.text and "BoardCast" in response.text
+
+
+class DemoSwitcherParser(HTMLParser):
+    def __init__(self, html):
+        super().__init__()
+        self.present = False
+        self.inside = False
+        self.links = []
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "nav" and attrs.get("id") == "demo-switcher":
+            self.present = self.inside = True
+        if self.inside and tag == "a":
+            self.links.append(attrs)
+
+    def handle_endtag(self, tag):
+        if tag == "nav":
+            self.inside = False
+
+
+@pytest.mark.parametrize("path", ["/submit", "/admin", "/admin/club", "/demo", "/demo/outbox"])
+def test_demo_switcher_connects_local_judge_workspaces(api, path):
+    response = api.get(path)
+    assert response.status_code == 200
+    nav = DemoSwitcherParser(response.text)
+    assert nav.present
+    hrefs = {link.get("href") for link in nav.links}
+    assert {"/submit?demo=club", "/admin?demo=student-affairs", "/demo/outbox"} <= hrefs
+    expected_current = {"/submit": "/submit?demo=club", "/admin": "/admin?demo=student-affairs",
+                        "/admin/club": "/submit?demo=club", "/demo/outbox": "/demo/outbox"}.get(path)
+    current = [link.get("href") for link in nav.links if link.get("aria-current") == "page"]
+    assert current == ([expected_current] if expected_current else [])
+
+
+@pytest.mark.parametrize("dev_mode", [False, True])
+@pytest.mark.parametrize("path", ["/submit?demo=club", "/admin?demo=student-affairs", "/admin/club"])
+def test_demo_switcher_requires_local_mode_even_with_dev_mode_or_demo_query(api, monkeypatch, dev_mode, path):
+    monkeypatch.setattr(config, "LOCAL_MODE", False)
+    monkeypatch.setattr(config, "DEV_MODE", dev_mode)
+    response = api.get(path)
+    assert response.status_code == 200
+    assert not DemoSwitcherParser(response.text).present
+
+
+@pytest.mark.parametrize("path", ["/subscribe", "/subscribe/verify", "/preferences"])
+def test_student_subscription_pages_do_not_show_demo_switcher(api, path):
+    params = {}
+    if path == "/subscribe/verify":
+        params["t"] = tokens.sign("student.demo@mail.apu.edu.my", "verify")
+    elif path == "/preferences":
+        params["token"] = tokens.sign("student.demo@mail.apu.edu.my")
+    response = api.get(path, params=params)
+    assert response.status_code == 200
+    assert not DemoSwitcherParser(response.text).present
+
+
+def test_demo_navigation_query_does_not_grant_approval_permission(api):
+    item_id = submit_event(api).json()["id"]
+    response = api.post(f"/admin/api/items/{item_id}/decision?demo=student-affairs", headers=headers(),
+                        json={"decision": "approve"})
+    assert response.status_code == 403
+    assert store.get_item(item_id)["status"] == "pending"
 
 
 @pytest.mark.parametrize("with_poster", [False, True])
@@ -306,6 +371,64 @@ def test_local_outbox_email_is_sandboxed_and_prevents_parent_path_access(api, tm
     assert "sandbox" in response.headers["Content-Security-Policy"]
     assert response.headers["Cache-Control"] == "no-store"
     assert api.get("/demo/outbox/..%5Coutside.html").status_code == 404
+
+
+class OutboxPreviewParser(HTMLParser):
+    def __init__(self, html):
+        super().__init__()
+        self.sources = []
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "iframe":
+            self.sources.append(dict(attrs).get("src"))
+
+
+@pytest.fixture
+def outbox_messages(api):
+    folder = config.LOCAL_DATA_DIR / "outbox"
+    folder.mkdir()
+    newest, older = "20261110-090000_student.html", "20261109-090000_student.html"
+    for name in (older, newest):
+        (folder / name).write_text("<p>Offline sample message</p>", encoding="utf-8")
+    return newest, older
+
+
+def test_outbox_defaults_to_newest_message(api, outbox_messages):
+    response = api.get("/demo/outbox")
+    assert response.status_code == 200
+    assert OutboxPreviewParser(response.text).sources == [f"/demo/outbox/{outbox_messages[0]}"]
+
+
+def test_outbox_can_preview_a_selected_known_message(api, outbox_messages):
+    response = api.get("/demo/outbox", params={"message": outbox_messages[1]})
+    assert response.status_code == 200
+    assert OutboxPreviewParser(response.text).sources == [f"/demo/outbox/{outbox_messages[1]}"]
+
+
+@pytest.mark.parametrize("message", ["missing.html", "../outside.html", "..\\outside.html",
+                                     "https://example.invalid/remote.html"])
+def test_outbox_unknown_or_path_query_falls_back_to_newest(api, outbox_messages, message):
+    response = api.get("/demo/outbox", params={"message": message})
+    assert response.status_code == 200
+    assert OutboxPreviewParser(response.text).sources == [f"/demo/outbox/{outbox_messages[0]}"]
+
+
+def test_empty_outbox_has_no_embedded_message(api):
+    response = api.get("/demo/outbox", params={"message": "unlisted.html"})
+    assert response.status_code == 200
+    assert OutboxPreviewParser(response.text).sources == []
+
+
+def test_outbox_selection_is_limited_to_the_latest_fifty_messages(api):
+    folder = config.LOCAL_DATA_DIR / "outbox"
+    folder.mkdir()
+    names = [f"20261110-{index:06d}_student.html" for index in range(51)]
+    for name in names:
+        (folder / name).write_text("<p>Offline sample message</p>", encoding="utf-8")
+    response = api.get("/demo/outbox", params={"message": names[0]})
+    assert response.status_code == 200
+    assert OutboxPreviewParser(response.text).sources == [f"/demo/outbox/{names[-1]}"]
 
 
 def test_local_mailer_never_uses_gmail_even_when_credentials_exist(tmp_path, monkeypatch):

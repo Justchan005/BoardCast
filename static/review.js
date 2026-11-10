@@ -2,6 +2,10 @@
   const {api, el} = Staff;
   const $ = id => document.getElementById(id);
   let me, items = [], status = 'pending', selected = null, issue = null, selectionRequest = 0;
+  function updatePublishDisabled() {
+    if ($('publish-local')) $('publish-local').disabled = !issue || !['preview','partial'].includes(issue.status) || Newsletter.blocksPublish();
+    if ($('build-preview')) $('build-preview').disabled = Newsletter.blocksPublish();
+  }
   function notice(text, kind = 'ok') { $('notice').textContent = text; $('notice').className = 'alert ' + kind; $('notice').hidden = !text; }
   async function action(button, work) {
     button.disabled = true;
@@ -9,7 +13,7 @@
     finally {
       button.disabled = false;
       if (button.id === 'hold') button.disabled = !issue || ['sent','held'].includes(issue.status);
-      if (button.id === 'publish-local') button.disabled = !issue || !['preview','partial'].includes(issue.status);
+      if (button.id === 'publish-local' || button.id === 'build-preview') updatePublishDisabled();
     }
   }
   async function load() {
@@ -94,6 +98,7 @@
   }
   async function loadIssue() {
     const res = await api('/admin/api/preview'); issue = res.issue;
+    Newsletter.setIssue(issue, res);
     $('issue-card').hidden = false;
     $('issue-link').hidden = !issue;
     if (!issue) {$('issue-status').textContent='No edition built yet. Approve submissions first.'; $('hold').disabled=true; if($('publish-local')) $('publish-local').disabled=true; return;}
@@ -102,7 +107,7 @@
     $('issue-status').textContent=issue.week_start+' · '+issue.status+(stats?' · '+stats:'');
     $('issue-link').href=res.magazine_url;
     $('hold').disabled=['sent','held'].includes(issue.status);
-    if($('publish-local')) $('publish-local').disabled=!['preview','partial'].includes(issue.status);
+    updatePublishDisabled();
     if(counts.unknown) notice('Some delivery outcomes are uncertain. Check the sender’s Sent mailbox before resolving them; these recipients will not be retried automatically.','warn');
   }
   $('hold').onclick=()=>action($('hold'),async()=>{await api('/admin/api/issues/'+issue.id+'/hold',{method:'POST'});notice('Issue held. Further deliveries are stopped.');await loadIssue();});
@@ -113,6 +118,6 @@
   const tabs=[...document.querySelectorAll('[role=tab]')];
   function selectTab(button) {status=button.dataset.status; selected=null; for(const b of tabs){b.setAttribute('aria-selected',String(b===button));b.tabIndex=b===button?0:-1;} $('list').setAttribute('aria-labelledby',button.id);renderList();}
   tabs.forEach((button,index)=>{button.onclick=()=>selectTab(button);button.onkeydown=ev=>{let next;if(ev.key==='ArrowRight')next=(index+1)%tabs.length;if(ev.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;if(ev.key==='Home')next=0;if(ev.key==='End')next=tabs.length-1;if(next!=null){ev.preventDefault();tabs[next].focus();selectTab(tabs[next]);}};});
-  window.addEventListener('boardcast:signout',()=>{selectionRequest++;items=[];selected=null;});
-  Staff.init(async who=>{me=who;$('app').hidden=false;try{await load();}catch(e){if(!e.stale)notice(e.message,'bad');}});
+  window.addEventListener('boardcast:signout',()=>{selectionRequest++;items=[];selected=null;issue=null;Newsletter.reset();});
+  Staff.init(async who=>{me=who;$('app').hidden=false;try{await load();if(me.role==='student_affairs')await Newsletter.init({onStateChange:updatePublishDisabled,onSaved:loadIssue});else Newsletter.reset();}catch(e){if(!e.stale)notice(e.message,'bad');}});
 })();

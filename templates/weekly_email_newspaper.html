@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ plan.subject_line }}</title>
+  <style>
+    @media only screen and (max-width:600px) {
+      .np-inset { padding-left:18px !important; padding-right:18px !important; }
+      .np-masthead { font-size:36px !important; letter-spacing:-1px !important; }
+      .np-lead-poster, .np-lead-copy, .np-story-column, .np-single-poster, .np-single-copy { display:block !important; width:100% !important; box-sizing:border-box !important; }
+      .np-lead-poster, .np-single-poster { padding:0 !important; }
+      .np-lead-copy, .np-single-copy { padding:22px 0 0 !important; }
+      .np-lead-copy-full { padding:0 !important; }
+      .np-lead-title { font-size:32px !important; }
+      .np-story-left { padding-right:0 !important; }
+      .np-story-right { padding:24px 0 0 !important; margin-top:24px !important; border-left:0 !important; border-top:1px solid #bdb7ab !important; }
+      .np-photo { max-width:100% !important; }
+      .np-schedule { font-size:12px !important; }
+    }
+  </style>
+</head>
+{% macro rubric(item) -%}
+  {{ 'EVENT' if item.type == 'event' else 'CAMPUS WIN' if item.type == 'achievement' else 'OPPORTUNITY' }}
+{%- endmacro %}
+{% macro poster(item, width=320) -%}
+  {% if item.show_poster %}
+  <a href="{{ base }}/p/{{ item.id }}.jpg" style="display:block;color:#8f2f27;text-decoration:none;">
+    <img class="np-photo" src="{{ base }}/p/{{ item.id }}.jpg" width="{{ width }}" alt="Poster: {{ item.data.title or item.data.team }}" style="display:block;width:100%;max-width:{{ width }}px;height:auto;margin:0;border:0;">
+  </a>
+  <p style="margin:8px 0 0;font:10px/1.5 Arial,Helvetica,sans-serif;letter-spacing:.5px;">
+    <a href="{{ base }}/p/{{ item.id }}.jpg" style="color:#6b655c;text-decoration:underline;">View the full poster</a>
+  </p>
+  {% endif %}
+{%- endmacro %}
+{% macro supporting_story(item, wide=False) -%}
+  {% set alongside = wide and item.show_poster %}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" data-story-id="{{ item.id }}" style="width:100%;border-collapse:collapse;table-layout:fixed;">
+    <tr>
+      {% if alongside %}
+      <td class="np-single-poster" width="38%" valign="top" style="width:38%;padding:0 24px 0 0;vertical-align:top;">
+        {{ poster(item, 260) }}
+      </td>
+      {% endif %}
+      <td{% if alongside %} class="np-single-copy" width="62%"{% endif %} valign="top" style="padding:0;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">
+        {% if not alongside %}{{ poster(item, 320) }}{% endif %}
+        <p style="margin:{{ '16px' if item.show_poster and not alongside else '0' }} 0 8px;font:700 10px/1.5 Arial,Helvetica,sans-serif;letter-spacing:1.5px;color:#9d3229;">{{ rubric(item) }}</p>
+        <h2 style="margin:0 0 12px;font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:1.16;font-weight:700;letter-spacing:-.35px;color:#23231f;">{{ item.data.title or item.data.team }}</h2>
+        <div style="font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.65;color:#38372f;">
+          {% include '_publication_copy.html' %}
+        </div>
+      </td>
+    </tr>
+  </table>
+{%- endmacro %}
+<body style="margin:0;padding:0;background:#e7e2d7;color:#23231f;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;background:#e7e2d7;">
+    <tr><td align="center" style="padding:16px 8px;">
+      <!--[if mso]><table role="presentation" width="760" cellpadding="0" cellspacing="0"><tr><td><![endif]-->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" data-newsletter-template="newspaper" style="width:100%;max-width:760px;border-collapse:collapse;background:#f7f3e8;color:#23231f;font-family:Arial,Helvetica,sans-serif;">
+        <tr><td class="np-inset" style="padding:18px 24px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font:10px/1.5 Arial,Helvetica,sans-serif;letter-spacing:.8px;">
+            <tr><td style="color:#9d3229;font-weight:bold;">BOARDCAST · APU</td>
+              <td align="right">{% if issue_id %}<a href="{{ base }}/m/{{ issue_id }}" style="color:#6b655c;text-decoration:underline;">Read online</a>{% else %}<span style="color:#6b655c;">Campus edition</span>{% endif %}</td></tr>
+          </table>
+          <p class="np-masthead" style="margin:9px 0 8px;text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:48px;line-height:1.05;font-weight:700;letter-spacing:-1.8px;">Campus Weekly</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border-top:4px double #23231f;border-bottom:1px solid #23231f;font:10px/1.5 Arial,Helvetica,sans-serif;">
+            <tr><td style="padding:8px 10px 8px 0;">{{ issue.week_start.strftime('%A, %d %B %Y') }}</td>
+              <td align="right" style="padding:8px 0;color:#6b655c;">Clubs · Campus wins · Opportunities</td></tr>
+          </table>
+        </td></tr>
+
+        {% if newspaper_lead %}{% set item = newspaper_lead %}
+        <tr><td class="np-inset" style="padding:24px 24px 28px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" data-story-id="{{ item.id }}" data-newspaper-layout="lead-columns" style="width:100%;border-collapse:collapse;table-layout:fixed;">
+            <tr>
+              {% if item.show_poster %}
+              <td class="np-lead-poster" width="52%" valign="top" style="width:52%;padding:0 24px 0 0;vertical-align:top;">
+                {{ poster(item, 360) }}
+              </td>
+              {% endif %}
+              <td class="np-lead-copy{% if not item.show_poster %} np-lead-copy-full{% endif %}"{% if item.show_poster %} width="48%"{% else %} width="100%"{% endif %} valign="top" style="padding:0;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">
+                <p style="margin:0 0 11px;font:700 10px/1.5 Arial,Helvetica,sans-serif;letter-spacing:1.6px;color:#9d3229;">{{ rubric(item) }} · LEAD STORY</p>
+                <h1 class="np-lead-title" style="margin:0 0 18px;font-family:Georgia,'Times New Roman',serif;font-size:37px;line-height:1.08;letter-spacing:-.8px;font-weight:700;color:#23231f;">{{ item.data.title or item.data.team }}</h1>
+                <div style="padding-top:16px;border-top:1px solid #bdb7ab;font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.7;color:#38372f;">
+                  {% include '_publication_copy.html' %}
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+        {% else %}
+        <tr><td class="np-inset" style="padding:30px 24px 36px;">
+          <h1 style="margin:0 0 12px;font:700 31px/1.15 Georgia,'Times New Roman',serif;">This edition</h1>
+          <p style="margin:0;font:17px/1.65 Georgia,'Times New Roman',serif;color:#6b655c;">There are no new submissions in this edition.</p>
+        </td></tr>
+        {% endif %}
+
+        {% if newspaper_stories %}
+        <tr><td class="np-inset" style="padding:0 24px;">
+          <h2 style="margin:0;padding:10px 0;border-top:3px solid #23231f;border-bottom:1px solid #bdb7ab;font:700 11px/1.5 Arial,Helvetica,sans-serif;letter-spacing:1.5px;color:#9d3229;">MORE FROM CAMPUS</h2>
+        </td></tr>
+        {% for pair in newspaper_stories|batch(2, none) %}
+        <tr><td class="np-inset" style="padding:24px 24px;{% if not loop.last %}border-bottom:1px solid #bdb7ab;{% endif %}">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" data-newspaper-layout="supporting-columns" style="width:100%;border-collapse:collapse;table-layout:fixed;">
+            <tr>
+              <td class="np-story-column np-story-left"{% if pair[1] %} width="50%"{% else %} width="100%" colspan="2"{% endif %} valign="top" style="vertical-align:top;{% if pair[1] %}width:50%;padding:0 20px 0 0;{% else %}padding:0;{% endif %}">
+                {{ supporting_story(pair[0], not pair[1]) }}
+              </td>
+              {% if pair[1] %}
+              <td class="np-story-column np-story-right" width="50%" valign="top" style="width:50%;padding:0 0 0 20px;vertical-align:top;border-left:1px solid #bdb7ab;">
+                {{ supporting_story(pair[1]) }}
+              </td>
+              {% endif %}
+            </tr>
+          </table>
+        </td></tr>
+        {% endfor %}
+        {% endif %}
+
+        {% if issue.events %}
+        <tr><td class="np-inset" style="padding:8px 24px 26px;">
+          <h2 style="margin:0;padding:10px 0;border-top:3px solid #23231f;border-bottom:1px solid #bdb7ab;font:700 11px/1.5 Arial,Helvetica,sans-serif;letter-spacing:1.5px;color:#9d3229;">THE CAMPUS DIARY</h2>
+          <table class="np-schedule" width="100%" cellpadding="0" cellspacing="0" style="width:100%;table-layout:fixed;border-collapse:collapse;font:13px/1.5 Arial,Helvetica,sans-serif;">
+            <caption style="padding:10px 0;text-align:left;font:10px/1.5 Arial,Helvetica,sans-serif;color:#6b655c;">Upcoming events · Dates and times in Malaysia time</caption>
+            <thead><tr>
+              <th scope="col" width="27%" align="left" style="padding:8px 10px 8px 0;border-bottom:1px solid #23231f;font-size:10px;letter-spacing:.8px;">WHEN</th>
+              <th scope="col" width="55%" align="left" style="padding:8px 10px 8px 0;border-bottom:1px solid #23231f;font-size:10px;letter-spacing:.8px;">EVENT &amp; VENUE</th>
+              <th scope="col" width="18%" align="right" style="padding:8px 0;border-bottom:1px solid #23231f;font-size:10px;letter-spacing:.8px;">FEE</th>
+            </tr></thead>
+            <tbody>{% for ev in issue.events %}{% set e = ev.data %}
+              <tr>
+                <th scope="row" align="left" valign="top" style="padding:12px 10px 12px 0;border-bottom:1px solid #d1cabe;font-weight:400;overflow-wrap:anywhere;"><strong>{{ e.date|nice_date }}</strong>{% if e.start_time %}<br><span style="color:#6b655c;">{{ e.start_time|hm }}</span>{% endif %}</th>
+                <td valign="top" style="padding:12px 10px 12px 0;border-bottom:1px solid #d1cabe;overflow-wrap:anywhere;word-break:break-word;"><strong>{{ e.title }}</strong><br><span style="color:#6b655c;">{{ e.venue or 'Venue TBC' }}</span></td>
+                <td align="right" valign="top" style="padding:12px 0;border-bottom:1px solid #d1cabe;overflow-wrap:anywhere;word-break:break-word;">{{ e.fee or '—' }}</td>
+              </tr>
+            {% endfor %}</tbody>
+          </table>
+        </td></tr>
+        {% endif %}
+
+        <tr><td class="np-inset" style="padding:4px 24px 24px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border-top:4px double #23231f;">
+            <tr><td style="padding:16px 0 0;font:11px/1.75 Arial,Helvetica,sans-serif;color:#6b655c;">
+              <strong style="font-family:Georgia,'Times New Roman',serif;font-size:17px;color:#23231f;">Campus Weekly</strong><br>
+              Every item was submitted by an APU club or office and approved by Student Affairs, in the club's own words.<br>
+              BoardCast never asks for your password.
+              {% if prefs_url or unsubscribe_url %}<p style="margin:10px 0 0;">{% if prefs_url %}<a href="{{ prefs_url }}" style="color:#8f2f27;">Manage subscription</a>{% endif %}{% if prefs_url and unsubscribe_url %} &nbsp;·&nbsp; {% endif %}{% if unsubscribe_url %}<a href="{{ unsubscribe_url }}" style="color:#8f2f27;">Unsubscribe</a>{% endif %}</p>{% endif %}
+            </td></tr>
+          </table>
+        </td></tr>
+      </table>
+      <!--[if mso]></td></tr></table><![endif]-->
+    </td></tr>
+  </table>
+</body>
+</html>

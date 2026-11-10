@@ -3,15 +3,15 @@
 {% if item.type == 'event' %}
 <span class="cw-lead" style="font-weight:bold;">{{ d.date|nice_date }}{% if d.start_time %}, {{ d.start_time|hm }}{% if d.end_time %}–{{ d.end_time|hm }}{% endif %}{% endif %} · {{ d.venue or 'Venue TBC' }}{% if d.fee %} · {{ d.fee }}{% endif %}</span>
 – <b>{{ d.title }}</b>{% if d.organiser %} by {{ d.organiser }}{% endif %}.
-{{ (item.description or d.summary or '')|linkify_description }}
-{% if d.registration and d.registration.link %}<a href="{{ base }}/r/{{ item.id }}{{ save_q }}" style="color:#0B7BB5;font-weight:bold;">{{ 'Register here' if d.registration.required else 'More info here' }}</a>.{% endif %}
-{% if d.date and d.start_time %}<a href="{{ base }}/cal/{{ item.id }}.ics{{ save_q }}" style="color:#0B7BB5;font-weight:bold;">Add to calendar</a>.{% endif %}
+{{ (item.description or d.summary or '')|linkify_description(publication_accent|default(none)) }}
+{% if d.registration and d.registration.link %}<a href="{{ base }}/r/{{ item.id }}{{ save_q }}" style="color:{{ publication_accent|default('#0B7BB5') }};font-weight:bold;">{{ 'Register here' if d.registration.required else 'More info here' }}</a>.{% endif %}
+{% if d.date and d.start_time %}<a href="{{ base }}/cal/{{ item.id }}.ics{{ save_q }}" style="color:{{ publication_accent|default('#0B7BB5') }};font-weight:bold;">Add to calendar</a>.{% endif %}
 {% elif item.type == 'achievement' %}
 <span class="cw-lead" style="font-weight:bold;">{{ d.result }}</span> – <b>{{ d.team }}</b> at {{ d.competition }}.
-{{ (item.description or d.summary or '')|linkify_description }}
-{% if d.instagram_url and d.instagram_url is safe_instagram %}<a href="{{ d.instagram_url }}" rel="noopener noreferrer" style="color:#0B7BB5;font-weight:bold;">View on Instagram</a>.{% endif %}
+{{ (item.description or d.summary or '')|linkify_description(publication_accent|default(none)) }}
+{% if d.instagram_url and d.instagram_url is safe_instagram %}<a href="{{ d.instagram_url }}" rel="noopener noreferrer" style="color:{{ publication_accent|default('#0B7BB5') }};font-weight:bold;">View on Instagram</a>.{% endif %}
 {% else %}
 {% if d.deadline %}<span class="cw-lead" style="font-weight:bold;">Closes {{ d.deadline|nice_date }}</span> – {% endif %}<b>{{ d.title }}</b>{% if d.organiser %} by {{ d.organiser }}{% endif %}.
-{{ (item.description or d.summary or '')|linkify_description }}
-{% if d.action_link %}<a href="{{ base }}/r/{{ item.id }}{{ save_q }}" style="color:#0B7BB5;font-weight:bold;">Find out more</a>.{% endif %}
+{{ (item.description or d.summary or '')|linkify_description(publication_accent|default(none)) }}
+{% if d.action_link %}<a href="{{ base }}/r/{{ item.id }}{{ save_q }}" style="color:{{ publication_accent|default('#0B7BB5') }};font-weight:bold;">Find out more</a>.{% endif %}
 {% endif %}

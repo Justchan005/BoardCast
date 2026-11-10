@@ -64,6 +64,8 @@ def _prepare(issue: dict, owner: str) -> tuple[dict | None, str | None]:
     reason = "no approved items remain" if not items else ("no active subscribers" if not recipients else None)
     snapshot = {"id": issue["id"], "week_start": issue["week_start"], "status": "sent",
                 "items": items, "item_ids": ids, "editor_plan": plan.model_dump(),
+                "newsletter_template": issue_builder.newsletter_template(issue.get("newsletter_template")),
+                "newsletter_design": issue_builder.newsletter_design(issue.get("newsletter_design"), issue.get("newsletter_template")),
                 "excluded_item_ids": excluded,
                 "editor_report": {**(issue.get("editor_report") or {}), "send_check": {
                     "excluded_item_ids": excluded,
@@ -153,6 +155,8 @@ def _finish(issue: dict, owner: str) -> dict:
                   "delivery_frozen": bool(summary["sent"] or summary["unknown"])}
         if summary["sent"] or summary["unknown"]:
             fields.update({k: snapshot[k] for k in ("items", "item_ids", "editor_plan", "editor_report")})
+            fields["newsletter_template"] = issue_builder.newsletter_template(snapshot.get("newsletter_template"))
+            fields["newsletter_design"] = issue_builder.newsletter_design(snapshot.get("newsletter_design"), snapshot.get("newsletter_template"))
         return {issue_key: fields}
 
     changed = store.atomic_documents([issue_key, *keys], finish)

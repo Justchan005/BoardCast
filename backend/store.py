@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from google.cloud import firestore
+from google.cloud.firestore_v1.field_path import FieldPath
 
 from . import config
 
@@ -161,7 +162,9 @@ def atomic_documents(keys: list[tuple[str, str]], transform) -> dict | None:
         result = dict(rows)
         for key, fields in changes.items():
             if transaction is not None:
-                transaction.set(refs[key], fields, merge=True)
+                # Replace each supplied top-level field, including entire maps, as
+                # LocalClient does. merge=True would recursively retain removed keys.
+                transaction.set(refs[key], fields, merge=[FieldPath(field).to_api_repr() for field in fields])
             else:
                 refs[key].set(fields, merge=True)
             result[key] = {**(rows[key] or {}), **fields}

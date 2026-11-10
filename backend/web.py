@@ -7,12 +7,14 @@ verifies the Google ID token and checks their role in Firestore.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Literal, Optional
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from shared.schemas import ItemStatus, Role
 
@@ -118,7 +120,8 @@ def magazine(issue_id: str):
 
 @router.get("/admin", response_class=HTMLResponse)
 def admin_page():
-    return page("admin.html", client_id=config.OAUTH_CLIENT_ID, dev_mode=config.DEV_MODE, local_mode=config.LOCAL_MODE)
+    return page("admin.html", client_id=config.OAUTH_CLIENT_ID, dev_mode=config.DEV_MODE, local_mode=config.LOCAL_MODE,
+                demo_switcher=config.LOCAL_MODE, demo_view="affairs")
 
 
 @router.get("/admin/api/me")
@@ -159,9 +162,100 @@ def latest_preview(email: str = Depends(auth.web_user)):
     snaps = store.db().collection("issues").order_by("week_start", direction="DESCENDING").limit(50).stream()
     doc = max((s.to_dict() for s in snaps), key=lambda d: (str(d.get('week_start', '')), str(d.get('created_at', ''))), default=None)
     if not doc:
-        return {"issue": None}
-    return {"issue": {k: doc.get(k) for k in ("id", "week_start", "status", "editor_plan", "editor_report", "delivery_summary")},
+        from .editor import fallback_plan
+        edition = issue_builder.collect(datetime.now(ZoneInfo(config.TIMEZONE)).date())
+        layout_items, lead_id = issue_builder.layout_items(edition, fallback_plan(issue_builder.all_items(edition)))
+        return {"issue": None, "layout_items": layout_items, "layout_lead_id": lead_id}
+    edition, plan = issue_builder.from_saved(doc)
+    layout_items, lead_id = issue_builder.layout_items(edition, plan)
+    issue = {k: doc.get(k) for k in ("id", "week_start", "status", "editor_plan", "editor_report", "delivery_summary")}
+    issue.update(newsletter_template=edition["newsletter_template"], newsletter_design=edition["newsletter_design"],
+                 layout_editable=issue_builder.layout_editable(doc), layout_items=layout_items, layout_lead_id=lead_id)
+    return {"issue": issue,
             "magazine_url": f"/m/{doc['id']}"}
+
+
+class NewsletterTemplateChoice(BaseModel):
+    template: Literal["classic", "newspaper"]
+    issue_id: str | None = Field(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    design: issue_builder.NewsletterDesign | None = None
+
+
+@router.get("/admin/api/newsletter-template")
+def get_newsletter_template(email: str = Depends(auth.web_user)):
+    auth.require_role(email, Role.STUDENT_AFFAIRS)
+    from .editor import fallback_plan
+    settings = issue_builder.publication_settings()
+    edition = issue_builder.collect(datetime.now(ZoneInfo(config.TIMEZONE)).date())
+    edition.update(newsletter_template=settings["template"], newsletter_design=settings["design"])
+    items, lead_id = issue_builder.layout_items(edition, fallback_plan(issue_builder.all_items(edition)))
+    return {**settings, "templates": list(issue_builder.NEWSLETTER_TEMPLATES),
+            "fonts": list(issue_builder.DESIGN_FONTS), "items": items, "lead_id": lead_id,
+            "design_defaults": {template["id"]: issue_builder.default_newsletter_design(template["id"])
+                                for template in issue_builder.NEWSLETTER_TEMPLATES}}
+
+
+@router.put("/admin/api/newsletter-template")
+def set_newsletter_template(body: NewsletterTemplateChoice, email: str = Depends(auth.web_user)):
+    auth.require_role(email, Role.STUDENT_AFFAIRS)
+    settings_key = ("settings", "publication")
+    issue_key = ("issues", body.issue_id) if body.issue_id is not None else None
+    keys = [settings_key, issue_key] if issue_key else [settings_key]
+    design_supplied = "design" in body.model_fields_set
+    chosen_design = issue_builder.newsletter_design(body.design, body.template) if design_supplied else None
+
+    def change(rows):
+        if issue_key:
+            issue = rows[issue_key]
+            if not issue:
+                raise HTTPException(404, "Issue not found")
+            if not issue_builder.layout_editable(issue):
+                raise HTTPException(409, "This edition can no longer change layout. Refresh it, or save the layout for future editions only.")
+        updates = {settings_key: {"newsletter_template": body.template,
+                                  "updated_at": store.now(), "updated_by": email}}
+        if issue_key:
+            updates[issue_key] = {"newsletter_template": body.template}
+        if design_supplied:
+            updates[settings_key]["newsletter_design"] = issue_builder.default_design_fields(chosen_design, body.template)
+            if issue_key:
+                updates[issue_key]["newsletter_design"] = chosen_design
+        return updates
+
+    changed = store.atomic_documents(keys, change)
+    audit.log(email, "newsletter_template_changed", None,
+              {"template": body.template, "issue_id": body.issue_id})
+    return {"template": body.template, "issue_id": body.issue_id,
+            "applied_to_issue": issue_key is not None,
+            "design": issue_builder.default_design_fields(changed[settings_key].get("newsletter_design"), body.template),
+            "issue_design": issue_builder.newsletter_design(changed[issue_key].get("newsletter_design"), body.template)
+                if issue_key else None}
+
+
+@router.post("/admin/api/newsletter-template/preview")
+def preview_newsletter_template(body: NewsletterTemplateChoice, email: str = Depends(auth.web_user)):
+    """Render a candidate layout without changing an edition, subscribers or delivery state."""
+    auth.require_role(email, Role.STUDENT_AFFAIRS)
+    from .editor import fallback_plan
+    if body.issue_id is not None:
+        saved = store.get_issue(body.issue_id)
+        if not saved:
+            raise HTTPException(404, "Issue not found")
+        edition, plan = issue_builder.from_saved(saved)
+        source = "edition"
+    else:
+        today = datetime.now(ZoneInfo(config.TIMEZONE)).date()
+        edition = issue_builder.collect(today)
+        settings = issue_builder.publication_settings()
+        edition["newsletter_design"] = issue_builder.newsletter_design(settings["design"], settings["template"])
+        plan = fallback_plan(issue_builder.all_items(edition))
+        source = "approved"
+    edition = {**edition, "newsletter_template": body.template}
+    if "design" in body.model_fields_set:
+        edition["newsletter_design"] = issue_builder.newsletter_design(body.design, body.template)
+    items = issue_builder.all_items(edition)
+    html = issue_builder.render_email(edition, plan, None,
+                                      issue_id=body.issue_id or "", unsubscribe_url="", prefs_url="")
+    return {"html": html, "item_count": len(items), "source": source}
 
 
 @router.post("/admin/api/issues/{issue_id}/hold")
@@ -200,7 +294,8 @@ def _click_counts(item_ids: set[str]) -> dict[str, dict[str, int]]:
 
 @router.get("/admin/club", response_class=HTMLResponse)
 def club_page():
-    return page("club.html", client_id=config.OAUTH_CLIENT_ID, dev_mode=config.DEV_MODE)
+    return page("club.html", client_id=config.OAUTH_CLIENT_ID, dev_mode=config.DEV_MODE,
+                demo_switcher=config.LOCAL_MODE, demo_view="club")
 
 
 @router.get("/admin/api/club")

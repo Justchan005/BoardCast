@@ -1,2 +1,31 @@
-{% extends 'base.html' %}{% block title %}Local outbox · BoardCast{% endblock %}{% block topbar_right %}<a href="/demo">Demo home</a>{% endblock %}
-{% block content %}<main class="wrap wide"><header class="page-heading"><div><span class="eyebrow">LOCAL DEMO</span><h1>Email outbox</h1><p class="muted">These messages were saved on this computer. No real email was sent.</p></div><a class="btn secondary" href="/admin">Review desk</a></header><div class="card stack">{% for name in files %}<a href="/demo/outbox/{{ name }}" target="_blank" rel="noopener" class="outbox-link">{{ name }}</a>{% else %}<p>No emails yet. Build and publish an edition from the review desk, or request a student verification code.</p>{% endfor %}</div></main>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Outbox preview · BoardCast{% endblock %}
+{% block topbar_right %}<span class="pill approved">Local demo · emails stay here</span>{% endblock %}
+{% block content %}
+<main class="wrap wide">
+  <header class="page-heading">
+    <div><span class="eyebrow">CAMPUS WEEKLY / THE OUTPUT</span><h1>Outbox preview</h1><p class="muted">See the email students would receive. These messages stay on this computer.</p></div>
+    <a class="btn secondary" href="/admin?demo=student-affairs">Back to Student Affairs</a>
+  </header>
+  {% if selected %}
+  <div class="outbox-layout">
+    <aside class="outbox-messages" aria-label="Saved emails">
+      <h2>Saved emails <span class="muted">{{ files|length }}</span></h2>
+      <p class="muted">Newest first</p>
+      {% for name in files %}
+      <a href="/demo/outbox?message={{ name|urlencode }}" class="outbox-message"{% if name == selected %} aria-current="true"{% endif %}>
+        <strong>{{ 'Latest email' if loop.first else 'Email ' ~ loop.index }}</strong>
+        <span>{{ name }}</span>
+      </a>
+      {% endfor %}
+    </aside>
+    <section class="outbox-preview" aria-label="Email preview">
+      <div class="outbox-preview-heading"><h2>Email preview</h2><a href="/demo/outbox/{{ selected|urlencode }}" target="_blank" rel="noopener" class="text-link">Open full email ↗</a></div>
+      <iframe src="/demo/outbox/{{ selected|urlencode }}" title="Selected email preview" sandbox="allow-downloads allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>
+    </section>
+  </div>
+  {% else %}
+  <div class="card empty-state"><h2>Your first edition starts here.</h2><p class="muted">Approve a submission, build a local preview, then publish it to this outbox.</p><a class="btn" href="/admin?demo=student-affairs">Open Student Affairs</a></div>
+  {% endif %}
+</main>
+{% endblock %}

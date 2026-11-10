@@ -95,6 +95,25 @@ edition for every student, in fixed numbered sections (empty ones are left out):
 | 3. Campus wins | Result, team, competition + Instagram link + poster | The club / APU |
 | 4. Opportunities | "Closes ... – title by office." + their words + link + poster | The club / office |
 
+Student Affairs can open **Newsletter template** on `/admin`, choose **Classic** (bordered
+sections) or **Newspaper** (a lead story beside its poster, supporting story columns, and a
+schedule below the news), and preview the email with
+approved content. **Use this template** saves the default for future editions and also updates
+the current edition if it is still an editable preview. The saved choice controls both email
+and web layouts. Editions that have begun delivery keep their original layout, including retries.
+Template previews are read-only and do not call Gemini or send email.
+The newspaper rearranges the same approved copy; it does not add filler or rewrite submissions.
+Email uses two supporting columns, the web edition uses up to three, and both stack on mobile.
+
+Enable **Customize this template** to choose headline/body fonts, background/text/accent colours,
+one to three story columns, and the lead poster's position. Drag stories into the lead area or
+a column; each story also has a destination menu and move-up/down buttons for keyboard and
+mobile use. **Preview newsletter** shows the candidate email before **Use this template** saves it.
+The web edition supports three columns; email folds the third into the second for readability.
+Appearance settings become the default for future editions. Story placement is saved to the
+current editable edition only. A sent edition can be used to try a design without changing it.
+Resetting the design restores the selected preset. This editor runs locally without Gemini.
+
 ## UI
 
 | Screen | Route | Who |
@@ -124,7 +143,7 @@ edition for every student, in fixed numbered sections (empty ones are left out):
 | `templates/`, `static/` | Email, magazine, student and admin pages |
 | `infra/` | `setup.sh` (all Google Cloud resources), `deploy_agent.sh` |
 | `scripts/` | Local launcher, seed demo roles, create Gmail token |
-| `tests/` | `pytest -q` for Python; `node tests/frontend_state.cjs` for browser-independent UI state regressions; no cloud needed |
+| `tests/` | `pytest -q` for Python; `node tests/frontend_state.cjs` and `node tests/newsletter_state.cjs` for browser-independent UI state regressions; no cloud needed |
 
 ## Data (Firestore)
 
@@ -194,7 +213,10 @@ python -m scripts.run_local --port 8081 --offline
 ```
 
 On Windows, `start-local.ps1` provides a shortcut. Open `http://127.0.0.1:8081/demo` and follow
-Submit → Review → Preview → Publish → Outbox. Offline mode uses explicit manual entry and
+Submit → Review → Preview → Publish → Outbox. The segmented switch at the top opens **Club**,
+**Student Affairs** or **Outbox preview**. The first two select the matching demo account
+automatically, and Outbox preview displays the latest saved email. This shortcut appears only
+in `LOCAL_MODE`; normal backend role checks still apply. Offline mode uses explicit manual entry and
 deterministic copy; it does not pretend to run AI extraction. To use Gemini extraction, omit
 `--offline` and configure your Gemini API credentials (for AI Studio, `GOOGLE_GENAI_USE_VERTEXAI=FALSE`
 and `GEMINI_API_KEY` or `GOOGLE_API_KEY`). Gemini Enterprise access is not required for this local API path.

@@ -10,9 +10,12 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from pathlib import Path
+import re
+from typing import Annotated, Literal
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup, escape
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from shared.schemas import EditorPlan
 
@@ -21,6 +24,111 @@ from .checks import _as_date, _as_time, description_urls, instagram_link_problem
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 env = Environment(loader=FileSystemLoader(TEMPLATES), autoescape=select_autoescape(["html"]))
+
+# Template filenames are selected only from this allowlist, never from saved/user input.
+NEWSLETTER_TEMPLATES = (
+    {"id": "classic", "label": "Classic", "description": "A clean, familiar campus digest."},
+    {"id": "newspaper", "label": "Newspaper", "description": "An editorial newspaper layout for Campus Weekly."},
+)
+_NEWSLETTER_FILES = {
+    "classic": {"email": "weekly_email.html", "web": "magazine.html"},
+    "newspaper": {"email": "weekly_email_newspaper.html", "web": "magazine_newspaper.html"},
+}
+
+DESIGN_FONTS = (
+    {"id": "georgia", "label": "Georgia"}, {"id": "times", "label": "Times New Roman"},
+    {"id": "arial", "label": "Arial"}, {"id": "verdana", "label": "Verdana"},
+)
+_FONT_STACKS = {
+    "georgia": 'Georgia, "Times New Roman", serif',
+    "times": '"Times New Roman", Times, serif',
+    "arial": "Arial, Helvetica, sans-serif",
+    "verdana": "Verdana, Geneva, sans-serif",
+}
+_HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}\Z")
+DesignItemId = Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")]
+DesignColor = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]
+
+
+class NewsletterDesign(BaseModel):
+    """Bounded visual choices and item references, never executable HTML or CSS."""
+    model_config = ConfigDict(extra="forbid")
+    headline_font: Literal["georgia", "times", "arial", "verdana"] = "arial"
+    body_font: Literal["georgia", "times", "arial", "verdana"] = "arial"
+    paper_color: DesignColor = "#FFFFFF"
+    text_color: DesignColor = "#1B1B1B"
+    accent_color: DesignColor = "#0B7BB5"
+    columns: Literal[1, 2, 3] = 1
+    lead_image: Literal["left", "right"] = "left"
+    lead_id: DesignItemId | None = None
+    story_order: list[DesignItemId] = Field(default_factory=list, max_length=200)
+    column_map: dict[DesignItemId, Literal[1, 2, 3]] = Field(default_factory=dict, max_length=200)
+
+    @field_validator("paper_color", "text_color", "accent_color")
+    @classmethod
+    def normalize_color(cls, value):
+        return value.upper()
+
+    @field_validator("columns", mode="before")
+    @classmethod
+    def integer_columns(cls, value):
+        if type(value) is not int:
+            raise ValueError("Column count must be an integer")
+        return value
+
+    @field_validator("column_map", mode="before")
+    @classmethod
+    def integer_assignments(cls, value):
+        if isinstance(value, dict) and any(type(column) is not int for column in value.values()):
+            raise ValueError("Column assignments must be integers")
+        return value
+
+
+def newsletter_template(value=None) -> str:
+    """Old editions and unrecognized stored values retain the Classic layout."""
+    return value if isinstance(value, str) and value in _NEWSLETTER_FILES else "classic"
+
+
+def default_newsletter_design(template="classic") -> dict:
+    values = {"headline_font": "arial", "body_font": "arial", "paper_color": "#FFFFFF",
+              "text_color": "#1B1B1B", "accent_color": "#0B7BB5", "columns": 1,
+              "lead_image": "left", "lead_id": None, "story_order": [], "column_map": {}}
+    if newsletter_template(template) == "newspaper":
+        values.update(headline_font="georgia", body_font="georgia", paper_color="#F7F3E8",
+                      text_color="#23231F", accent_color="#9D3229", columns=2)
+    return values
+
+
+def newsletter_design(value, template="classic") -> dict | None:
+    """Resolve a validated partial design; unsafe legacy values disable customization."""
+    if value is None:
+        return None
+    raw = value.model_dump(exclude_unset=True) if isinstance(value, NewsletterDesign) else value
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return NewsletterDesign.model_validate({**default_newsletter_design(template), **raw}).model_dump()
+    except ValidationError:
+        return None
+
+
+def default_design_fields(value, template="classic") -> dict | None:
+    design = newsletter_design(value, template)
+    return {key: field for key, field in design.items() if key not in ("lead_id", "story_order", "column_map")} if design else None
+
+
+def publication_settings() -> dict:
+    saved = store.db().collection("settings").document("publication").get().to_dict() or {}
+    template = newsletter_template(saved.get("newsletter_template"))
+    return {"template": template, "design": default_design_fields(saved.get("newsletter_design"), template)}
+
+
+def default_newsletter_template() -> str:
+    return publication_settings()["template"]
+
+
+def layout_editable(issue: dict) -> bool:
+    return issue.get("status") == "preview" and not issue.get("delivery_frozen")
 
 
 def _hm(value) -> str:
@@ -40,15 +148,16 @@ def _is_free(fee) -> bool:
     return (fee or "").strip().lower() == "free"
 
 
-def _linkify_description(value: str | None) -> Markup:
+def _linkify_description(value: str | None, accent: str | None = None) -> Markup:
     """Keep the club's words escaped; only turn approved HTTPS URLs into direct links."""
     text = str(value or "")
+    color = accent if isinstance(accent, str) and _HEX_COLOR.fullmatch(accent) else "#0B7BB5"
     parts, cursor = [], 0
     for start, end, url in description_urls(text):
         parts.append(escape(text[cursor:start]))
         if link_problem(url) is None:
             parts.append(Markup('<a href="{}" rel="noopener noreferrer" '
-                                'style="color:#0B7BB5;font-weight:bold;">{}</a>').format(url, url))
+                                'style="color:{};font-weight:bold;">{}</a>').format(url, color, url))
         else:
             parts.append(escape(url))
         cursor = end
@@ -119,6 +228,8 @@ def from_saved(issue_doc: dict, *, for_send: bool = False) -> tuple[dict, Editor
         "announcements": [i for i in items if i["type"] == "announcement"],
         "achievements": [i for i in items if i["type"] == "achievement"],
         "week_start": start, "week_end": end,
+        "newsletter_template": newsletter_template(issue_doc.get("newsletter_template")),
+        "newsletter_design": newsletter_design(issue_doc.get("newsletter_design"), issue_doc.get("newsletter_template")),
     }
     return issue, plan
 
@@ -142,6 +253,36 @@ def _context(issue: dict, plan: EditorPlan) -> dict:
     plan, _ = validate(plan, all_items(issue))
     spotlight = next((e for e in issue["events"] if e["id"] == plan.spotlight_item_id), None)
     events = ([spotlight] if spotlight else []) + [e for e in issue["events"] if e is not spotlight]
+    newspaper_order = events + issue["achievements"] + issue["announcements"]
+    newspaper_lead = spotlight or (newspaper_order[0] if newspaper_order else None)
+    newspaper_stories = list(newspaper_order)
+    if newspaper_lead is not None:
+        newspaper_stories.remove(newspaper_lead)  # remove the lead once, retaining every other story
+    design = newsletter_design(issue.get("newsletter_design"), issue.get("newsletter_template"))
+    design_fonts = {key: _FONT_STACKS[design[f"{key}_font"]] for key in ("headline", "body")} if design else {}
+    custom_lead, custom_columns, custom_email_columns = None, [], []
+    if design is not None:
+        # Stored references may outlive an item or its approval. Resolve them only
+        # against this edition, deduplicate them, and always append new/unplaced items.
+        by_id = {item["id"]: item for item in newspaper_order}
+        custom_lead = by_id.get(design["lead_id"]) or newspaper_lead
+        ordered_ids = list(dict.fromkeys([item_id for item_id in design["story_order"] if item_id in by_id]
+                                        + [item["id"] for item in newspaper_order]))
+        supporting = [by_id[item_id] for item_id in ordered_ids
+                      if custom_lead is None or item_id != custom_lead["id"]]
+        custom_columns = [[] for _ in range(design["columns"])]
+        unplaced = []
+        for item in supporting:
+            assigned = design["column_map"].get(item["id"])
+            if assigned is None:
+                unplaced.append(item)
+            else:
+                custom_columns[min(assigned, design["columns"]) - 1].append(item)
+        for item in unplaced:
+            min(custom_columns, key=len).append(item)
+        custom_email_columns = [list(column) for column in custom_columns[:2]]
+        if len(custom_columns) == 3:
+            custom_email_columns[1].extend(custom_columns[2])
     if not plan.headline:          # an issue saved before the Editor wrote headlines
         from .editor import fallback_plan
         plain = fallback_plan(all_items(issue), plan.spotlight_item_id)
@@ -154,10 +295,27 @@ def _context(issue: dict, plan: EditorPlan) -> dict:
     free = sum(1 for e in issue["events"] if _is_free(e["data"].get("fee")))
     return {
         "issue": issue, "plan": plan, "spotlight": spotlight, "events": events, "sections": sections,
+        "newspaper_lead": newspaper_lead, "newspaper_stories": newspaper_stories,
+        "design": design, "design_fonts": design_fonts, "custom_lead": custom_lead,
+        "custom_columns": custom_columns, "custom_email_columns": custom_email_columns,
+        "publication_accent": design["accent_color"] if design else "#0B7BB5",
         "base": config.PUBLIC_BASE_URL,
         "stats": {"events": len(issue["events"]), "free": free,
                   "wins": len(issue["achievements"]), "opportunities": len(issue["announcements"])},
     }
+
+
+def layout_items(issue: dict, plan: EditorPlan) -> tuple[list[dict], str | None]:
+    """Preset-ordered metadata; custom placement lives separately in newsletter_design."""
+    context = _context(issue, plan)
+    lead = context["newspaper_lead"]
+    ordered = ([lead] if lead else []) + [item for item in
+        context["events"] + issue["achievements"] + issue["announcements"]
+        if lead is None or item["id"] != lead["id"]]
+    rows = [{"id": item["id"], "title": str(item["data"].get("title") or item["data"].get("team") or "Untitled"),
+             "type": item["type"], "poster_url": f"{config.PUBLIC_BASE_URL}/p/{item['id']}.jpg"
+                 if item.get("show_poster") and item.get("poster_uri") else None} for item in ordered]
+    return rows, lead["id"] if lead else None
 
 
 def render_email(issue: dict, plan: EditorPlan, subscriber: dict | None,
@@ -166,13 +324,15 @@ def render_email(issue: dict, plan: EditorPlan, subscriber: dict | None,
     # Links in a student's own email save the event for a 1-hour reminder (signed, per student).
     save_q = f"?s={tokens.sign(subscriber['email'], 'save')}" if subscriber and subscriber.get("email") else ""
     ctx.update(unsubscribe_url=unsubscribe_url, issue_id=issue_id, prefs_url=prefs_url, save_q=save_q)
-    return env.get_template("weekly_email.html").render(**ctx)
+    filename = "weekly_email_custom.html" if ctx["design"] is not None else _NEWSLETTER_FILES[newsletter_template(issue.get("newsletter_template"))]["email"]
+    return env.get_template(filename).render(**ctx)
 
 
 def render_magazine(issue: dict, plan: EditorPlan, issue_id: str) -> str:
     ctx = _context(issue, plan)
     ctx["issue_id"] = issue_id
-    return env.get_template("magazine.html").render(**ctx)
+    filename = "magazine_custom.html" if ctx["design"] is not None else _NEWSLETTER_FILES[newsletter_template(issue.get("newsletter_template"))]["web"]
+    return env.get_template(filename).render(**ctx)
 
 
 def build_preview(monday: date) -> tuple[str, dict]:
@@ -192,6 +352,7 @@ def build_preview(monday: date) -> tuple[str, dict]:
              .where("week_start", "==", monday.isoformat()).stream())
     for snap in older:
         store.db().collection("issues").document(snap.id).update({"status": "superseded"})
+    settings = publication_settings()
     issue_id = store.save_issue({
         "week_start": monday.isoformat(),
         "status": "preview",
@@ -199,5 +360,7 @@ def build_preview(monday: date) -> tuple[str, dict]:
         "items": items,
         "editor_plan": plan.model_dump(),
         "editor_report": report,
+        "newsletter_template": settings["template"],
+        "newsletter_design": newsletter_design(settings["design"], settings["template"]),
     })
     return issue_id, report

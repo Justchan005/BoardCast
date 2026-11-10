@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}{{ plan.subject_line }}{% endblock %}
+{% block body_class %}custom-newsletter{% endblock %}
+{% block web_fonts %}{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/newsletter-custom.css?v=20261110-1">
+<style>
+  body.custom-newsletter {
+    --nc-headline:{{ design_fonts.headline|safe }};
+    --nc-body:{{ design_fonts.body|safe }};
+    --nc-paper:{{ design.paper_color }};
+    --nc-text:{{ design.text_color }};
+    --nc-accent:{{ design.accent_color }};
+  }
+</style>
+{% endblock %}
+{% block topbar_right %}
+<nav class="nc-topnav" aria-label="Edition sections">
+  {% if custom_lead %}<a href="#front-page">Front page</a>{% endif %}
+  {% if issue.events %}<a href="#coming-up">Coming up</a>{% endif %}
+</nav>
+{% endblock %}
+{% block content %}
+{% macro category(item) -%}{{ 'Campus events' if item.type == 'event' else 'Campus wins' if item.type == 'achievement' else 'Opportunities' }}{%- endmacro %}
+{% macro poster(item, lead=False) -%}
+  {% if item.show_poster %}
+  <figure class="nc-poster{% if lead %} nc-poster--lead{% endif %}">
+    <a href="/p/{{ item.id }}.jpg" target="_blank" rel="noopener" aria-label="Open the full poster: {{ item.data.title or item.data.team }}">
+      <img src="/p/{{ item.id }}.jpg" alt="Poster: {{ item.data.title or item.data.team }}"{% if not lead %} loading="lazy"{% endif %}>
+    </a>
+    <figcaption>Original poster · <a href="/p/{{ item.id }}.jpg" target="_blank" rel="noopener">View full size</a></figcaption>
+  </figure>
+  {% endif %}
+{%- endmacro %}
+{% macro story(item) -%}
+  <article class="nc-story{% if item.show_poster %} nc-story--illustrated{% endif %}" data-story-id="{{ item.id }}" aria-labelledby="story-{{ item.id }}">
+    {{ poster(item) }}
+    <div class="nc-story-copy">
+      <p class="nc-kicker">{{ category(item) }}</p>
+      <h2 id="story-{{ item.id }}">{{ item.data.title or item.data.team }}</h2>
+      <div class="nc-copy">{% with base='', save_q='', publication_accent=design.accent_color %}{% include '_publication_copy.html' %}{% endwith %}</div>
+    </div>
+  </article>
+{%- endmacro %}
+{% set count = namespace(stories=0) %}
+{% for column in custom_columns %}{% set count.stories = count.stories + column|length %}{% endfor %}
+<main class="nc-paper nc-preset-{{ issue.newsletter_template }}" data-newsletter-template="custom" data-preset="{{ issue.newsletter_template }}" data-columns="{{ design.columns }}" data-lead-image="{{ design.lead_image }}">
+  <header class="nc-masthead">
+    <div class="nc-masthead-top"><span>BoardCast · APU</span><span>Clubs, campus life &amp; opportunities</span></div>
+    <p class="nc-name">Campus Weekly</p>
+    <div class="nc-edition-line"><time datetime="{{ issue.week_start.isoformat() }}">{{ issue.week_start.strftime('%A, %d %B %Y') }}</time><span>Published by BoardCast</span></div>
+    {% if plan.teaser and count.stories %}<p class="nc-edition-deck">{{ plan.teaser }}</p>{% endif %}
+  </header>
+
+  {% if custom_lead %}{% set item = custom_lead %}
+  <article id="front-page" class="nc-lead{% if item.show_poster %} nc-lead--illustrated nc-lead--image-{{ design.lead_image }}{% endif %}" data-story-id="{{ item.id }}" aria-labelledby="story-{{ item.id }}">
+    {% if design.lead_image == 'left' %}{{ poster(item, True) }}{% endif %}
+    <div class="nc-lead-copy">
+      <p class="nc-kicker">{{ category(item) }} · Lead story</p>
+      <h1 id="story-{{ item.id }}">{{ item.data.title or item.data.team }}</h1>
+      <div class="nc-copy">{% with base='', save_q='', publication_accent=design.accent_color %}{% include '_publication_copy.html' %}{% endwith %}</div>
+    </div>
+    {% if design.lead_image == 'right' %}{{ poster(item, True) }}{% endif %}
+  </article>
+  {% else %}
+  <section class="nc-empty" aria-labelledby="empty-heading"><p class="nc-kicker">The campus edition</p><h1 id="empty-heading">Until the next edition</h1><p>There are no new submissions in this edition.</p><a href="/subscribe">Subscribe to Campus Weekly</a></section>
+  {% endif %}
+
+  {% if count.stories %}
+  <section class="nc-news" aria-labelledby="news-heading">
+    <div class="nc-section-line"><h2 id="news-heading">More from campus</h2></div>
+    <div class="nc-columns nc-columns--{{ custom_columns|length }}">
+      {% for column in custom_columns %}
+      <div class="nc-column" data-column="{{ loop.index }}">{% for item in column %}{{ story(item) }}{% endfor %}</div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if issue.events %}
+  <section class="nc-schedule" id="coming-up" aria-labelledby="schedule-heading">
+    <div class="nc-section-line"><h2 id="schedule-heading">Coming up</h2></div>
+    <div class="nc-table-scroll" tabindex="0" role="region" aria-label="Coming-up table; scroll horizontally on small screens">
+      <table class="nc-glance"><caption>Dates and times in Malaysia time</caption>
+        <thead><tr><th scope="col">Date</th><th scope="col">Time</th><th scope="col">Event &amp; venue</th><th scope="col">Fee</th></tr></thead>
+        <tbody>{% for ev in issue.events %}{% set e = ev.data %}<tr>
+          <th scope="row">{{ e.date|nice_date }}</th><td>{{ e.start_time|hm }}</td><td><a href="#story-{{ ev.id }}">{{ e.title }}</a><span>{{ e.venue or 'Venue TBC' }}</span></td><td>{{ e.fee or '—' }}</td>
+        </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <footer class="nc-footer">
+    <div><p class="nc-footer-name">Campus Weekly</p><p>Published by BoardCast</p></div>
+    <div><p>Every item was submitted by an APU club or office and approved by Student Affairs, in the club's own words. BoardCast never asks for your password.</p><a href="/subscribe">Get Campus Weekly every Monday</a></div>
+  </footer>
+</main>
+{% endblock %}

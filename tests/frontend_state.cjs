@@ -64,8 +64,8 @@ function fixture({search = '', request = async () => ({})} = {}) {
   return {get, ready: (...args) => ready(...args), signOut: () => handlers.get('boardcast:signout')?.()};
 }
 
-function staffFixture(request) {
-  const elements = new Map(), stored = new Map();
+function staffFixture(request, {search = '', demoSwitcher = false, stored = new Map()} = {}) {
+  const elements = new Map();
   const get = id => {
     if (!elements.has(id)) elements.set(id, {
       hidden: false, disabled: false, textContent: '', value: '',
@@ -77,9 +77,9 @@ function staffFixture(request) {
   };
   const window = {dispatchEvent() {}};
   const context = vm.createContext({
-    window, Headers, FormData, URL, Event, fetch: request,
+    window, Headers, FormData, URL, URLSearchParams, Event, location: {search}, fetch: request,
     sessionStorage: {getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key)},
-    document: {getElementById: get, querySelector: () => get('login-button')},
+    document: {getElementById: id => id === 'demo-switcher' && !demoSwitcher ? null : get(id), querySelector: () => get('login-button')},
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'static', 'staff.js'), 'utf8'), context);
   return {staff: vm.runInContext('Staff', context), window, get, stored};
@@ -244,6 +244,80 @@ async function run() {
     assert.deepEqual(ready, ['b@apu.edu.my'], 'late old login must not invoke onReady or persist the old account');
     assert.equal(JSON.parse(f.stored.get('boardcast.staff')).token, 'B');
     console.log('PASS stale login completion and sign-out recovery');
+  }
+  for (const [demoRole, expectedEmail] of [
+    ['club', 'clubrep.demo@mail.apu.edu.my'],
+    ['student-affairs', 'studentaffairs.demo@apu.edu.my'],
+  ]) {
+    const stored = new Map([['boardcast.staff', JSON.stringify({token: 'OLD-STORED-TOKEN', devUser: 'old@apu.edu.my'})]]);
+    const requests = [], ready = [];
+    const f = staffFixture(async (route, options) => {
+      requests.push(options.headers);
+      return response(200, {email: options.headers.get('X-Dev-User'), role: demoRole === 'club' ? 'club_rep' : 'student_affairs'});
+    }, {search: '?demo=' + demoRole, demoSwitcher: true, stored});
+    f.staff.init(me => ready.push(me.email)); await tick();
+    assert.deepEqual(ready, [expectedEmail]);
+    assert.equal(requests[0].get('X-Dev-User'), expectedEmail, 'the explicit demo link must override a stored account');
+    assert.equal(requests[0].get('Authorization'), null, 'demo selection must clear a stored token');
+    assert.deepEqual(JSON.parse(stored.get('boardcast.staff')), {token: null, devUser: expectedEmail});
+    f.staff.signOut(); await tick();
+    assert.equal(requests.length, 1, 'sign-out must not immediately restart the query-selected demo login');
+    assert.equal(stored.has('boardcast.staff'), false);
+  }
+  console.log('PASS explicit local role links override stored account');
+  for (const [search, demoSwitcher] of [
+    ['?demo=club', false],
+    ['?demo=student-affairs', false],
+    ['?demo=admin', true],
+    ['?demo=__proto__', true],
+    ['?demo=Club', true],
+    ['?demo=student_affairs', true],
+    ['?item=correction-id', true],
+  ]) {
+    const original = {token: 'PRESERVED-TOKEN', devUser: null};
+    const stored = new Map([['boardcast.staff', JSON.stringify(original)]]);
+    const requests = [];
+    const f = staffFixture(async (route, options) => {
+      requests.push(options.headers);
+      return response(200, {email: 'existing-reviewer@apu.edu.my', role: 'student_affairs'});
+    }, {search, demoSwitcher, stored});
+    f.staff.init(() => {}); await tick();
+    assert.equal(requests[0].get('Authorization'), 'Bearer PRESERVED-TOKEN', search);
+    assert.equal(requests[0].get('X-Dev-User'), null, search);
+    assert.deepEqual(JSON.parse(stored.get('boardcast.staff')), original);
+  }
+  {
+    let calls = 0;
+    const f = staffFixture(async () => { calls++; return response(200, {}); }, {search: '?demo=club', demoSwitcher: false});
+    f.staff.init(() => {}); await tick();
+    assert.equal(calls, 0, 'a production URL parameter alone must not create a demo session');
+  }
+  console.log('PASS invalid and nonlocal demo parameters preserve session');
+  {
+    const stored = new Map();
+    const request = async (route, options) => {
+      const email = options.headers.get('X-Dev-User');
+      return response(200, {email, role: email.startsWith('studentaffairs.') ? 'student_affairs' : 'club_rep'});
+    };
+    const reviewer = staffFixture(request, {search: '?demo=student-affairs', demoSwitcher: true, stored});
+    reviewer.staff.init(() => {}); await tick();
+    const beforeOutbox = stored.get('boardcast.staff');
+    // The outbox does not initialise a staff login. Sharing sessionStorage must leave the role intact.
+    staffFixture(request, {search: '', demoSwitcher: true, stored});
+    assert.equal(stored.get('boardcast.staff'), beforeOutbox);
+    const club = staffFixture(request, {search: '?demo=club', demoSwitcher: true, stored});
+    const ready = []; club.staff.init(me => ready.push(me.email)); await tick();
+    assert.deepEqual(ready, ['clubrep.demo@mail.apu.edu.my']);
+    const correction = staffFixture(request, {search: '?item=existing-item', demoSwitcher: true, stored});
+    correction.staff.init(me => ready.push(me.email)); await tick();
+    assert.deepEqual(ready, ['clubrep.demo@mail.apu.edu.my', 'clubrep.demo@mail.apu.edu.my']);
+    const backToReviewer = staffFixture(request, {search: '?demo=student-affairs', demoSwitcher: true, stored});
+    backToReviewer.staff.init(me => ready.push(me.email)); await tick();
+    assert.equal(ready.at(-1), 'studentaffairs.demo@apu.edu.my');
+    const saCorrection = staffFixture(request, {search: '?item=existing-item', demoSwitcher: true, stored});
+    saCorrection.staff.init(me => ready.push(me.email)); await tick();
+    assert.equal(ready.at(-1), 'studentaffairs.demo@apu.edu.my', 'a correction link must keep Student Affairs identity');
+    console.log('PASS outbox return role switching and correction identity');
   }
 }
 

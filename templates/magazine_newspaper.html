@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+{% block title %}{{ plan.subject_line }}{% endblock %}
+{% block body_class %}newspaper{% endblock %}
+{% block web_fonts %}{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/newspaper.css?v=20261110-3">{% endblock %}
+{% block topbar_right %}
+<nav class="np-topnav" aria-label="Edition sections">
+  {% if newspaper_lead %}<a href="#front-page">Front page</a>{% endif %}
+  {% if newspaper_stories|length > 1 %}<a href="#campus-news">Campus news</a>{% endif %}
+  {% if issue.events %}<a href="#glance">Coming up</a>{% endif %}
+</nav>
+{% endblock %}
+{% block content %}
+{% set category_labels = {'tech':'Technology', 'career':'Careers', 'sports':'Sport', 'arts':'Arts & culture', 'culture':'Culture', 'volunteer':'Community', 'social':'Campus life', 'academic':'Academic life', 'other':'Campus events'} %}
+{% macro category(item) -%}
+  {% if item.type == 'event' %}{{ category_labels.get(item.data.category, 'Campus events') }}
+  {% elif item.type == 'achievement' %}Campus wins
+  {% else %}Opportunities{% endif %}
+{%- endmacro %}
+{% macro poster(item, lead=False) -%}
+  {% if item.show_poster %}
+  <figure class="np-poster{% if lead %} np-poster--lead{% endif %}">
+    <a href="/p/{{ item.id }}.jpg" target="_blank" rel="noopener" aria-label="Open the full poster: {{ item.data.title or item.data.team }}">
+      <img src="/p/{{ item.id }}.jpg" alt="Poster: {{ item.data.title or item.data.team }}" {% if not lead %}loading="lazy"{% endif %}>
+    </a>
+    <figcaption>Original poster · <a href="/p/{{ item.id }}.jpg" target="_blank" rel="noopener">View full size</a></figcaption>
+  </figure>
+  {% endif %}
+{%- endmacro %}
+{% macro brief(item, rail=False) -%}
+  <article class="np-brief{% if rail %} np-brief--rail{% endif %}{% if item.show_poster %} np-brief--illustrated{% else %} np-brief--text{% endif %}" data-story-id="{{ item.id }}" aria-labelledby="story-{{ item.id }}">
+    {% if item.show_poster %}<div class="np-brief-art">{{ poster(item) }}</div>{% endif %}
+    <div class="np-brief-text">
+      <p class="np-kicker">{{ category(item) }}</p>
+      {% if rail %}<h2 id="story-{{ item.id }}">{{ item.data.title or item.data.team }}</h2>{% else %}<h3 id="story-{{ item.id }}">{{ item.data.title or item.data.team }}</h3>{% endif %}
+      <p class="np-copy">{% with base='', save_q='' %}{% include '_publication_copy.html' %}{% endwith %}</p>
+    </div>
+  </article>
+{%- endmacro %}
+{% set has_rail = newspaper_stories|length > 0 %}
+{% set column_stories = newspaper_stories[1:] if has_rail else newspaper_stories %}
+<main class="np-paper" data-newsletter-template="newspaper">
+  <header class="np-masthead">
+    <div class="np-masthead-top"><span>BoardCast · APU</span><span>Clubs, campus life &amp; opportunities</span></div>
+    <p class="np-name">Campus Weekly</p>
+    <div class="np-edition-line">
+      <time datetime="{{ issue.week_start.isoformat() }}">{{ issue.week_start.strftime('%A, %d %B %Y') }}</time>
+      <span>Published by BoardCast</span>
+      <span class="np-edition-label">The campus edition</span>
+    </div>
+    {% if plan.teaser and newspaper_stories %}<p class="np-edition-deck">{{ plan.teaser }}</p>{% endif %}
+  </header>
+
+  {% if newspaper_lead %}
+  <div class="np-front-page{% if has_rail %} np-front-page--with-rail{% endif %}" id="front-page">
+    <article class="np-lead{% if newspaper_lead.show_poster %} np-lead--illustrated{% else %} np-lead--text{% endif %}" data-story-id="{{ newspaper_lead.id }}" aria-labelledby="story-{{ newspaper_lead.id }}">
+      <div class="np-lead-copy">
+        <p class="np-kicker">{{ category(newspaper_lead) }}{% if spotlight and newspaper_lead.id == spotlight.id %}<span> / In the spotlight</span>{% endif %}</p>
+        <h1 id="story-{{ newspaper_lead.id }}">{{ newspaper_lead.data.title or newspaper_lead.data.team }}</h1>
+        {% if newspaper_lead.data.organiser %}<p class="np-source">From {{ newspaper_lead.data.organiser }}</p>{% endif %}
+        <p class="np-copy">{% with item=newspaper_lead, base='', save_q='' %}{% include '_publication_copy.html' %}{% endwith %}</p>
+      </div>
+      {{ poster(newspaper_lead, True) }}
+    </article>
+    {% if has_rail %}
+    <aside class="np-front-rail" aria-label="More from campus">
+      {{ brief(newspaper_stories[0], True) }}
+    </aside>
+    {% endif %}
+  </div>
+
+  {% if column_stories %}
+  <section class="np-newsdesk" id="campus-news" aria-labelledby="campus-news-heading">
+    <div class="np-section-line"><h2 id="campus-news-heading">Campus news</h2><span>From APU clubs and offices</span></div>
+    <div class="np-columns np-columns--{{ 'single' if column_stories|length == 1 else ('two' if column_stories|length == 2 else 'three') }}">
+      {% for item in column_stories %}{{ brief(item) }}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+  {% else %}
+  <section class="np-empty" aria-labelledby="empty-heading">
+    <p class="np-kicker">The campus edition</p>
+    <h1 id="empty-heading">Until the next edition</h1>
+    <p>There are no new submissions in this edition.</p>
+    <a href="/subscribe">Subscribe to Campus Weekly</a>
+  </section>
+  {% endif %}
+
+  {% if issue.events %}
+  <section class="np-schedule" id="glance" aria-labelledby="schedule-heading">
+    <div class="np-section-line"><h2 id="schedule-heading">Coming up</h2><span>Your campus diary</span></div>
+    <div class="np-glance-scroll" tabindex="0" role="region" aria-label="Coming-up table; scroll horizontally on small screens">
+      <table class="np-glance">
+        <caption>Dates and times in Malaysia time</caption>
+        <thead><tr><th scope="col">Date</th><th scope="col">Time</th><th scope="col">Event &amp; venue</th><th scope="col">Fee</th></tr></thead>
+        <tbody>{% for ev in issue.events %}{% set e = ev.data %}
+          <tr><th scope="row">{{ e.date|nice_date }}</th><td>{{ e.start_time|hm }}</td>
+            <td><a href="#story-{{ ev.id }}">{{ e.title }}</a><span>{{ e.venue or 'Venue TBC' }}</span></td>
+            <td>{{ e.fee or '—' }}</td></tr>
+        {% endfor %}</tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <footer class="np-colophon">
+    <div><p class="np-footer-name">Campus Weekly</p><p>Published by BoardCast</p></div>
+    <div class="np-footer-copy"><p>Every item was submitted by an APU club or office and approved by Student Affairs, in the club's own words. BoardCast never asks for your password.</p><a href="/subscribe">Get Campus Weekly every Monday</a></div>
+  </footer>
+</main>
+{% endblock %}

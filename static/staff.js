@@ -53,6 +53,18 @@ const Staff = (() => {
     catch (_) { return null; }
   }
   function init(onReady) {
+    // These two role links exist only in the server-rendered local demo nav.
+    // A correction URL without ?demo= keeps the current staff account.
+    const demoRole = document.getElementById('demo-switcher')
+      ? new URLSearchParams(location.search).get('demo') : null;
+    const demoEmail = demoRole === 'club' ? 'clubrep.demo@mail.apu.edu.my'
+      : demoRole === 'student-affairs' ? 'studentaffairs.demo@apu.edu.my' : null;
+    if (demoEmail) {
+      epoch++;
+      session = {token:null, devUser:demoEmail};
+      const emailInput = document.getElementById('devemail');
+      if (emailInput) emailInput.value = demoEmail;
+    }
     let starting = null;
     async function start() {
       const loginEpoch = epoch;

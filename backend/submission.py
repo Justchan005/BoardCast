@@ -55,6 +55,7 @@ def _own_upload(upload_id: str, email: str) -> dict:
 def submission_page():
     return HTMLResponse(issue_builder.env.get_template('submit.html').render(
         client_id=config.OAUTH_CLIENT_ID, dev_mode=config.DEV_MODE, local_mode=config.LOCAL_MODE,
+        demo_switcher=config.LOCAL_MODE, demo_view='club',
         ai_configured=bool(config.GEMINI_API_KEY or (config.USE_VERTEX and config.PROJECT_ID))))
 
 
@@ -179,15 +180,19 @@ def _local_only():
 @router.get('/demo', response_class=HTMLResponse)
 def demo_page():
     _local_only()
-    return HTMLResponse(issue_builder.env.get_template('demo.html').render())
+    return HTMLResponse(issue_builder.env.get_template('demo.html').render(
+        demo_switcher=config.LOCAL_MODE, demo_view='home'))
 
 
 @router.get('/demo/outbox', response_class=HTMLResponse)
-def demo_outbox():
+def demo_outbox(message: str = ''):
     _local_only()
     folder = config.LOCAL_DATA_DIR / 'outbox'
     files = sorted(folder.glob('*.html'), key=lambda p: p.name, reverse=True)[:50]
-    return HTMLResponse(issue_builder.env.get_template('outbox.html').render(files=[p.name for p in files]))
+    filenames = [p.name for p in files]
+    selected = message if message in filenames else (filenames[0] if filenames else None)
+    return HTMLResponse(issue_builder.env.get_template('outbox.html').render(
+        files=filenames, selected=selected, demo_switcher=config.LOCAL_MODE, demo_view='outbox'))
 
 
 @router.get('/demo/outbox/{filename}', response_class=HTMLResponse)
