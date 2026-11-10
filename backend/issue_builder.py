@@ -29,10 +29,12 @@ env = Environment(loader=FileSystemLoader(TEMPLATES), autoescape=select_autoesca
 NEWSLETTER_TEMPLATES = (
     {"id": "classic", "label": "Classic", "description": "A clean, familiar campus digest."},
     {"id": "newspaper", "label": "Newspaper", "description": "An editorial newspaper layout for Campus Weekly."},
+    {"id": "custom", "label": "Custom", "description": "Arrange reusable title, picture and story placeholders."},
 )
 _NEWSLETTER_FILES = {
     "classic": {"email": "weekly_email.html", "web": "magazine.html"},
     "newspaper": {"email": "weekly_email_newspaper.html", "web": "magazine_newspaper.html"},
+    "custom": {"email": "weekly_email_theme.html", "web": "magazine_theme.html"},
 }
 
 DESIGN_FONTS = (
@@ -48,6 +50,17 @@ _FONT_STACKS = {
 _HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}\Z")
 DesignItemId = Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")]
 DesignColor = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]
+ThemeBlock = Literal["name", "date", "intro", "title", "picture", "details"]
+ThemeCell = Annotated[list[ThemeBlock], Field(max_length=3)]
+
+
+class NewsletterThemeRow(BaseModel):
+    """One full-width cell or two equally sized, mobile-stacking cells."""
+    model_config = ConfigDict(extra="forbid")
+    cells: list[ThemeCell] = Field(min_length=1, max_length=2)
+
+
+ThemeRows = Annotated[list[NewsletterThemeRow], Field(min_length=1, max_length=6)]
 
 
 class NewsletterDesign(BaseModel):
@@ -63,6 +76,18 @@ class NewsletterDesign(BaseModel):
     lead_id: DesignItemId | None = None
     story_order: list[DesignItemId] = Field(default_factory=list, max_length=200)
     column_map: dict[DesignItemId, Literal[1, 2, 3]] = Field(default_factory=dict, max_length=200)
+    header_rows: ThemeRows | None = None
+    story_rows: ThemeRows | None = None
+
+    @field_validator("header_rows", "story_rows")
+    @classmethod
+    def complete_theme_blocks(cls, rows, info):
+        if rows is not None:
+            required = {"name", "date", "intro"} if info.field_name == "header_rows" else {"title", "picture", "details"}
+            blocks = [block for row in rows for cell in row.cells for block in cell]
+            if len(blocks) != len(required) or set(blocks) != required:
+                raise ValueError("Every section placeholder must appear exactly once")
+        return rows
 
     @field_validator("paper_color", "text_color", "accent_color")
     @classmethod
@@ -92,24 +117,37 @@ def newsletter_template(value=None) -> str:
 def default_newsletter_design(template="classic") -> dict:
     values = {"headline_font": "arial", "body_font": "arial", "paper_color": "#FFFFFF",
               "text_color": "#1B1B1B", "accent_color": "#0B7BB5", "columns": 1,
-              "lead_image": "left", "lead_id": None, "story_order": [], "column_map": {}}
+              "lead_image": "left", "lead_id": None, "story_order": [], "column_map": {},
+              "header_rows": None, "story_rows": None}
     if newsletter_template(template) == "newspaper":
         values.update(headline_font="georgia", body_font="georgia", paper_color="#F7F3E8",
                       text_color="#23231F", accent_color="#9D3229", columns=2)
+    if newsletter_template(template) == "custom":
+        values.update(header_rows=[{"cells": [["name"]]}, {"cells": [["date", "intro"]]}],
+                      story_rows=[{"cells": [["picture"], ["title", "details"]]}])
     return values
 
 
 def newsletter_design(value, template="classic") -> dict | None:
-    """Resolve a validated partial design; unsafe legacy values disable customization."""
-    if value is None:
+    """Resolve bounded design data, with safe defaults for the standalone Custom theme."""
+    custom = newsletter_template(template) == "custom"
+    defaults = default_newsletter_design(template)
+    if value is None and not custom:
         return None
-    raw = value.model_dump(exclude_unset=True) if isinstance(value, NewsletterDesign) else value
+    raw = value.model_dump(exclude_unset=True) if isinstance(value, NewsletterDesign) else store.newsletter_design_from_storage(value)
+    if raw is None and custom:
+        raw = {}
     if not isinstance(raw, dict):
-        return None
+        return NewsletterDesign.model_validate(defaults).model_dump() if custom else None
     try:
-        return NewsletterDesign.model_validate({**default_newsletter_design(template), **raw}).model_dump()
+        resolved = {**defaults, **raw}
+        if custom:
+            for field in ("header_rows", "story_rows"):
+                if resolved[field] is None:
+                    resolved[field] = defaults[field]
+        return NewsletterDesign.model_validate(resolved).model_dump()
     except ValidationError:
-        return None
+        return NewsletterDesign.model_validate(defaults).model_dump() if custom else None
 
 
 def default_design_fields(value, template="classic") -> dict | None:
@@ -324,14 +362,18 @@ def render_email(issue: dict, plan: EditorPlan, subscriber: dict | None,
     # Links in a student's own email save the event for a 1-hour reminder (signed, per student).
     save_q = f"?s={tokens.sign(subscriber['email'], 'save')}" if subscriber and subscriber.get("email") else ""
     ctx.update(unsubscribe_url=unsubscribe_url, issue_id=issue_id, prefs_url=prefs_url, save_q=save_q)
-    filename = "weekly_email_custom.html" if ctx["design"] is not None else _NEWSLETTER_FILES[newsletter_template(issue.get("newsletter_template"))]["email"]
+    template = newsletter_template(issue.get("newsletter_template"))
+    filename = ("weekly_email_theme.html" if template == "custom" else "weekly_email_custom.html"
+                if ctx["design"] is not None else _NEWSLETTER_FILES[template]["email"])
     return env.get_template(filename).render(**ctx)
 
 
 def render_magazine(issue: dict, plan: EditorPlan, issue_id: str) -> str:
     ctx = _context(issue, plan)
     ctx["issue_id"] = issue_id
-    filename = "magazine_custom.html" if ctx["design"] is not None else _NEWSLETTER_FILES[newsletter_template(issue.get("newsletter_template"))]["web"]
+    template = newsletter_template(issue.get("newsletter_template"))
+    filename = ("magazine_theme.html" if template == "custom" else "magazine_custom.html"
+                if ctx["design"] is not None else _NEWSLETTER_FILES[template]["web"])
     return env.get_template(filename).render(**ctx)
 
 

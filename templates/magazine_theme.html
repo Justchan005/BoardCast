@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% block title %}{{ plan.subject_line }}{% endblock %}
+{% block body_class %}custom-newsletter theme-newsletter{% endblock %}
+{% block web_fonts %}{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/newsletter-custom.css?v=20261110-1">
+<link rel="stylesheet" href="/static/newsletter-theme.css?v=20261110-1">
+<style>
+  body.theme-newsletter {
+    --nc-headline:{{ design_fonts.headline|safe }};
+    --nc-body:{{ design_fonts.body|safe }};
+    --nc-paper:{{ design.paper_color }};
+    --nc-text:{{ design.text_color }};
+    --nc-accent:{{ design.accent_color }};
+  }
+</style>
+{% endblock %}
+{% block topbar_right %}
+<nav class="nc-topnav" aria-label="Edition sections">
+  {% if custom_lead %}<a href="#front-page">Front page</a>{% endif %}
+  {% if issue.events %}<a href="#coming-up">Coming up</a>{% endif %}
+</nav>
+{% endblock %}
+{% block content %}
+{% macro category(item) -%}{{ 'Campus events' if item.type == 'event' else 'Campus wins' if item.type == 'achievement' else 'Opportunities' }}{%- endmacro %}
+{% macro header_block(block) -%}
+  <div class="nt-block nt-header-{{ block }}" data-theme-block="{{ block }}">
+    {% if block == 'name' %}<p class="nt-name">Campus Weekly</p>
+    {% elif block == 'date' %}<div class="nt-edition-line"><time datetime="{{ issue.week_start.isoformat() }}">{{ issue.week_start.strftime('%A, %d %B %Y') }}</time><span>Published by BoardCast</span></div>
+    {% elif block == 'intro' and plan.teaser and custom_lead %}<p class="nt-intro">{{ plan.teaser }}</p>{% endif %}
+  </div>
+{%- endmacro %}
+{% macro story_block(block, item, lead) -%}
+  {% if block != 'picture' or item.show_poster %}
+  <div class="nt-block nt-block-{{ block }}" data-theme-block="{{ block }}">
+    {% if block == 'title' %}
+      <p class="nc-kicker">{{ category(item) }}{% if lead %} · Lead story{% endif %}</p>
+      {% if lead %}<h1 id="story-{{ item.id }}">{{ item.data.title or item.data.team }}</h1>{% else %}<h2 id="story-{{ item.id }}">{{ item.data.title or item.data.team }}</h2>{% endif %}
+    {% elif block == 'picture' %}
+      <figure class="nt-poster">
+        <a href="/p/{{ item.id }}.jpg" target="_blank" rel="noopener" aria-label="Open the full poster: {{ item.data.title or item.data.team }}"><img src="/p/{{ item.id }}.jpg" alt="Poster: {{ item.data.title or item.data.team }}"{% if not lead %} loading="lazy"{% endif %}></a>
+        <figcaption>Original poster · <a href="/p/{{ item.id }}.jpg" target="_blank" rel="noopener">View full size</a></figcaption>
+      </figure>
+    {% elif block == 'details' %}
+      <div class="nc-copy">{% with base='', save_q='', publication_accent=design.accent_color %}{% include '_publication_copy.html' %}{% endwith %}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+{%- endmacro %}
+{% macro story(item, lead=False) -%}
+  <article{% if lead %} id="front-page"{% endif %} class="nt-story{% if lead %} nt-story-lead{% endif %}" data-story-id="{{ item.id }}" aria-labelledby="story-{{ item.id }}">
+    {% for row in design.story_rows %}
+      {# A hidden poster must not leave an empty half-column behind. Intentional empty cells remain. #}
+      {% set visible = namespace(cells=[]) %}{% for cell in row.cells %}{% if item.show_poster or cell != ['picture'] %}{% set visible.cells = visible.cells + [cell] %}{% endif %}{% endfor %}
+      {% if visible.cells %}<div class="nt-row" data-theme-row="{{ loop.index }}" data-cells="{{ visible.cells|length }}">
+        {% for cell in visible.cells %}<div class="nt-cell" data-theme-cell="{{ loop.index }}">{% for block in cell %}{{ story_block(block, item, lead) }}{% endfor %}</div>{% endfor %}
+      </div>{% endif %}
+    {% endfor %}
+  </article>
+{%- endmacro %}
+{% set count = namespace(stories=0) %}{% for column in custom_columns %}{% set count.stories = count.stories + column|length %}{% endfor %}
+<main class="nc-paper nt-paper" data-newsletter-template="custom" data-theme="custom" data-columns="{{ design.columns }}">
+  <header class="nt-masthead" aria-label="Newsletter header" data-theme-section="header">
+    <div class="nt-brandline"><span>BoardCast · APU</span><span>Clubs, campus life &amp; opportunities</span></div>
+    {% for row in design.header_rows %}<div class="nt-row" data-theme-row="{{ loop.index }}" data-cells="{{ row.cells|length }}">
+      {% for cell in row.cells %}<div class="nt-cell" data-theme-cell="{{ loop.index }}">{% for block in cell %}{{ header_block(block) }}{% endfor %}</div>{% endfor %}
+    </div>{% endfor %}
+  </header>
+
+  {% if custom_lead %}{{ story(custom_lead, True) }}{% else %}
+  <section class="nc-empty" aria-labelledby="empty-heading"><p class="nc-kicker">The campus edition</p><h1 id="empty-heading">Until the next edition</h1><p>There are no new submissions in this edition.</p><a href="/subscribe">Subscribe to Campus Weekly</a></section>
+  {% endif %}
+
+  {% if count.stories %}
+  <section class="nc-news" aria-labelledby="news-heading">
+    <div class="nc-section-line"><h2 id="news-heading">More from campus</h2></div>
+    <div class="nc-columns nc-columns--{{ custom_columns|length }}">
+      {% for column in custom_columns %}<div class="nc-column" data-column="{{ loop.index }}">{% for item in column %}{{ story(item) }}{% endfor %}</div>{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if issue.events %}
+  <section class="nc-schedule" id="coming-up" aria-labelledby="schedule-heading">
+    <div class="nc-section-line"><h2 id="schedule-heading">Coming up</h2></div>
+    <div class="nc-table-scroll" tabindex="0" role="region" aria-label="Coming-up table; scroll horizontally on small screens">
+      <table class="nc-glance"><caption>Dates and times in Malaysia time</caption>
+        <thead><tr><th scope="col">Date</th><th scope="col">Time</th><th scope="col">Event &amp; venue</th><th scope="col">Fee</th></tr></thead>
+        <tbody>{% for ev in issue.events %}{% set e = ev.data %}<tr>
+          <th scope="row">{{ e.date|nice_date }}</th><td>{{ e.start_time|hm }}</td><td><a href="#story-{{ ev.id }}">{{ e.title }}</a><span>{{ e.venue or 'Venue TBC' }}</span></td><td>{{ e.fee or '—' }}</td>
+        </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <footer class="nc-footer">
+    <div><p class="nc-footer-name">Campus Weekly</p><p>Published by BoardCast</p></div>
+    <div><p>Every item was submitted by an APU club or office and approved by Student Affairs, in the club's own words. BoardCast never asks for your password.</p><a href="/subscribe">Get Campus Weekly every Monday</a></div>
+  </footer>
+</main>
+{% endblock %}

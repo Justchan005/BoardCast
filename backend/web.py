@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from shared.schemas import ItemStatus, Role
 
-from . import audit, auth, config, issue_builder, mailer, reviews, store, subscriptions, tokens
+from . import audit, auth, config, issue_builder, mailer, newsletter_themes, reviews, store, subscriptions, tokens
 
 router = APIRouter()
 log = logging.getLogger("boardcast.web")
@@ -176,9 +176,32 @@ def latest_preview(email: str = Depends(auth.web_user)):
 
 
 class NewsletterTemplateChoice(BaseModel):
-    template: Literal["classic", "newspaper"]
+    template: Literal["classic", "newspaper", "custom"]
     issue_id: str | None = Field(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     design: issue_builder.NewsletterDesign | None = None
+
+
+@router.get("/admin/api/newsletter-themes")
+def get_saved_newsletter_themes(email: str = Depends(auth.web_user)):
+    auth.require_role(email, Role.STUDENT_AFFAIRS)
+    return {"themes": newsletter_themes.list_themes()}
+
+
+@router.post("/admin/api/newsletter-themes", status_code=201)
+def create_saved_newsletter_theme(body: newsletter_themes.NewTheme, email: str = Depends(auth.web_user)):
+    auth.require_role(email, Role.STUDENT_AFFAIRS)
+    theme = newsletter_themes.create_theme(body, email)
+    audit.log(email, "newsletter_theme_created", None, {"theme_id": theme["id"], "revision": theme["revision"]})
+    return {"theme": theme}
+
+
+@router.put("/admin/api/newsletter-themes/{theme_id}")
+def update_saved_newsletter_theme(theme_id: str, body: newsletter_themes.ThemeUpdate,
+                                  email: str = Depends(auth.web_user)):
+    auth.require_role(email, Role.STUDENT_AFFAIRS)
+    theme = newsletter_themes.update_theme(theme_id, body, email)
+    audit.log(email, "newsletter_theme_updated", None, {"theme_id": theme["id"], "revision": theme["revision"]})
+    return {"theme": theme}
 
 
 @router.get("/admin/api/newsletter-template")

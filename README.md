@@ -96,8 +96,8 @@ edition for every student, in fixed numbered sections (empty ones are left out):
 | 4. Opportunities | "Closes ... – title by office." + their words + link + poster | The club / office |
 
 Student Affairs can open **Newsletter template** on `/admin`, choose **Classic** (bordered
-sections) or **Newspaper** (a lead story beside its poster, supporting story columns, and a
-schedule below the news), and preview the email with
+sections), **Newspaper** (a lead story beside its poster, supporting story columns, and a
+schedule below the news), or **Custom** (a reusable theme built from draggable placeholders), and preview the email with
 approved content. **Use this template** saves the default for future editions and also updates
 the current edition if it is still an editable preview. The saved choice controls both email
 and web layouts. Editions that have begun delivery keep their original layout, including retries.
@@ -113,6 +113,25 @@ The web edition supports three columns; email folds the third into the second fo
 Appearance settings become the default for future editions. Story placement is saved to the
 current editable edition only. A sent edition can be used to try a design without changing it.
 Resetting the design restores the selected preset. This editor runs locally without Gemini.
+
+Choose **Custom** to design the newsletter header and the layout used for each story.
+Move the newsletter title, edition date and introduction between header rows; move the story
+title, picture and details between story rows. Each row can be full width or split into two
+columns. Drag the handles or use the destination menus and arrow buttons. Add rows as needed
+and remove empty ones. These placeholders use approved content automatically, including
+poster visibility settings; the same theme works even before any stories are approved.
+Theme layouts are saved with the appearance settings and reused for future editions. The
+email and web previews follow the same block arrangement and stack columns on mobile.
+
+Student Affairs can give a Custom theme a name and choose **Save as new theme** to keep it
+in the shared **Saved themes** list. A saved theme remembers fonts, colours, columns and
+placeholder layouts, without storing this edition's story assignments. Select its card to
+load a copy, preview it, then choose **Use this template** to apply it. Saving a theme to the
+library does not apply it to an edition. **Update saved theme** replaces the selected library
+design; **Rename theme** changes only its name. Existing editions keep their saved design.
+Names are unique regardless of case, and concurrent updates ask staff to reload rather than
+overwrite another person's changes. Saved themes persist in the local data store and use
+the same Firestore-compatible storage format when running in the cloud.
 
 ## UI
 

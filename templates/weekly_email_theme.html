@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ plan.subject_line }}</title>
+  <style>
+    .nt-email-copy a { color:{{ design.accent_color }} !important; }
+    @media only screen and (max-width:600px) {
+      .nt-email-inset { padding-left:16px !important; padding-right:16px !important; }
+      .nt-email-cell,.nt-email-column { display:block !important; width:100% !important; box-sizing:border-box !important; }
+      .nt-email-cell { padding-left:0 !important; padding-right:0 !important; }
+      .nt-email-column-first { padding-right:0 !important; }
+      .nt-email-column-next { padding:24px 0 0 !important; }
+      .nt-email-card-inset { padding:18px !important; }
+      .nt-email-name { font-size:34px !important; letter-spacing:-1px !important; }
+      .nt-email-lead-title { font-size:30px !important; }
+      .nt-email-photo { max-width:100% !important; }
+      .nt-email-schedule { font-size:12px !important; }
+    }
+  </style>
+</head>
+{% macro category(item) -%}{{ 'CAMPUS EVENTS' if item.type == 'event' else 'CAMPUS WINS' if item.type == 'achievement' else 'OPPORTUNITIES' }}{%- endmacro %}
+{% macro header_block(block) -%}
+  <div data-theme-block="{{ block }}" style="padding:0 0 16px;">
+    {% if block == 'name' %}<p class="nt-email-name" style="margin:0;font-family:{{ design_fonts.headline }};font-size:42px;line-height:1.12;font-weight:700;letter-spacing:-1px;color:{{ design.text_color }};">Campus Weekly</p>
+    {% elif block == 'date' %}<p style="margin:0;font-family:{{ design_fonts.body }};font-size:11px;line-height:1.7;color:{{ design.text_color }};">{{ issue.week_start.strftime('%A, %d %B %Y') }}<br>Published by BoardCast</p>
+    {% elif block == 'intro' and plan.teaser and custom_lead %}<p style="margin:0;font-family:{{ design_fonts.body }};font-size:14px;line-height:1.7;color:{{ design.text_color }};">{{ plan.teaser }}</p>{% endif %}
+  </div>
+{%- endmacro %}
+{% macro story_block(block, item, lead, image_width) -%}
+  {% if block != 'picture' or item.show_poster %}
+  <div data-theme-block="{{ block }}" style="padding:0 0 16px;overflow-wrap:anywhere;word-break:break-word;">
+    {% if block == 'title' %}
+      <p style="margin:0 0 9px;font-family:{{ design_fonts.body }};font-size:10px;line-height:1.5;font-weight:700;letter-spacing:1px;color:{{ design.accent_color }};">{{ category(item) }}{% if lead %} · LEAD STORY{% endif %}</p>
+      {% if lead %}<h1 class="nt-email-lead-title" style="margin:0;font-family:{{ design_fonts.headline }};font-size:36px;line-height:1.15;font-weight:700;color:{{ design.text_color }};">{{ item.data.title or item.data.team }}</h1>
+      {% else %}<h2 style="margin:0;font-family:{{ design_fonts.headline }};font-size:26px;line-height:1.18;font-weight:700;color:{{ design.text_color }};">{{ item.data.title or item.data.team }}</h2>{% endif %}
+    {% elif block == 'picture' %}
+      <a href="{{ base }}/p/{{ item.id }}.jpg" style="display:block;color:{{ design.accent_color }};text-decoration:none;"><img class="nt-email-photo" src="{{ base }}/p/{{ item.id }}.jpg" width="{{ image_width }}" alt="Poster: {{ item.data.title or item.data.team }}" style="display:block;width:100%;max-width:{{ image_width }}px;height:auto;margin:0;border:0;border-radius:4px;"></a>
+      <p style="margin:7px 0 0;font-family:{{ design_fonts.body }};font-size:10px;line-height:1.5;color:{{ design.text_color }};">Original poster · <a href="{{ base }}/p/{{ item.id }}.jpg" style="color:{{ design.accent_color }};text-decoration:underline;">View full size</a></p>
+    {% elif block == 'details' %}
+      <div class="nt-email-copy" style="font-family:{{ design_fonts.body }};font-size:16px;line-height:1.75;color:{{ design.text_color }};">{% with publication_accent=design.accent_color %}{% include '_publication_copy.html' %}{% endwith %}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+{%- endmacro %}
+{% macro story(item, lead=False, wide=False) -%}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" data-story-id="{{ item.id }}" class="nt-email-story" style="width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;border:1px solid {{ design.accent_color }};border-radius:12px;background:{{ design.paper_color }};">
+    <tr><td class="nt-email-card-inset" style="padding:{{ 24 if lead else 20 }}px {{ 24 if lead else 20 }}px {{ 8 if lead else 4 }}px;vertical-align:top;color:{{ design.text_color }};">
+      {% for row in design.story_rows %}
+        {% set visible = namespace(cells=[]) %}{% for cell in row.cells %}{% if item.show_poster or cell != ['picture'] %}{% set visible.cells = visible.cells + [cell] %}{% endif %}{% endfor %}
+        {% if visible.cells %}
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" data-theme-row="{{ loop.index }}" data-cells="{{ visible.cells|length }}" style="width:100%;table-layout:fixed;border-collapse:collapse;">
+          <tr>{% for cell in visible.cells %}
+            <td class="nt-email-cell" data-theme-cell="{{ loop.index }}" width="{{ '50%' if visible.cells|length == 2 else '100%' }}" valign="top" style="width:{{ '50%' if visible.cells|length == 2 else '100%' }};vertical-align:top;padding:{{ '0' if visible.cells|length == 1 else '0 10px 0 0' if loop.first else '0 0 0 10px' }};overflow-wrap:anywhere;word-break:break-word;">
+              {% set image_width = (660 if visible.cells|length == 1 else 320) if wide else (300 if visible.cells|length == 1 else 140) %}
+              {% for block in cell %}{{ story_block(block, item, lead, image_width) }}{% endfor %}
+            </td>
+          {% endfor %}</tr>
+        </table>
+        {% endif %}
+      {% endfor %}
+    </td></tr>
+  </table>
+{%- endmacro %}
+{% set count = namespace(stories=0) %}{% for column in custom_email_columns %}{% set count.stories = count.stories + column|length %}{% endfor %}
+<body style="margin:0;padding:0;background:{{ design.paper_color }};color:{{ design.text_color }};font-family:{{ design_fonts.body }};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;background:{{ design.paper_color }};">
+    <tr><td align="center" style="padding:16px 8px;">
+      <!--[if mso]><table role="presentation" width="760" cellpadding="0" cellspacing="0"><tr><td><![endif]-->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" data-newsletter-template="custom" data-theme="custom" data-columns="{{ custom_email_columns|length }}" style="width:100%;max-width:760px;table-layout:fixed;border-collapse:collapse;background:{{ design.paper_color }};color:{{ design.text_color }};font-family:{{ design_fonts.body }};">
+        <tr><td class="nt-email-inset" style="padding:18px 24px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-family:{{ design_fonts.body }};font-size:10px;line-height:1.5;letter-spacing:.8px;color:{{ design.text_color }};">
+            <tr><td style="padding-bottom:18px;color:{{ design.accent_color }};font-weight:700;">BOARDCAST · APU</td><td align="right" style="padding-bottom:18px;">{% if issue_id %}<a href="{{ base }}/m/{{ issue_id }}" style="color:{{ design.accent_color }};text-decoration:underline;">Read online</a>{% else %}Campus edition{% endif %}</td></tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" data-theme-section="header" style="width:100%;table-layout:fixed;border-collapse:collapse;border-bottom:3px solid {{ design.accent_color }};">
+            {% for row in design.header_rows %}<tr><td>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" data-theme-row="{{ loop.index }}" data-cells="{{ row.cells|length }}" style="width:100%;table-layout:fixed;border-collapse:collapse;">
+                <tr>{% for cell in row.cells %}<td class="nt-email-cell" data-theme-cell="{{ loop.index }}" width="{{ '50%' if row.cells|length == 2 else '100%' }}" valign="top" style="width:{{ '50%' if row.cells|length == 2 else '100%' }};vertical-align:top;padding:{{ '0' if row.cells|length == 1 else '0 10px 0 0' if loop.first else '0 0 0 10px' }};overflow-wrap:anywhere;word-break:break-word;">{% for block in cell %}{{ header_block(block) }}{% endfor %}</td>{% endfor %}</tr>
+              </table>
+            </td></tr>{% endfor %}
+          </table>
+        </td></tr>
+
+        {% if custom_lead %}<tr><td class="nt-email-inset" style="padding:26px 24px 28px;">{{ story(custom_lead, True, True) }}</td></tr>
+        {% else %}<tr><td class="nt-email-inset" style="padding:32px 24px 36px;"><h1 style="margin:0 0 12px;font-family:{{ design_fonts.headline }};font-size:32px;line-height:1.15;color:{{ design.text_color }};">Until the next edition</h1><p style="margin:0;font-family:{{ design_fonts.body }};font-size:17px;line-height:1.65;color:{{ design.text_color }};">There are no new submissions in this edition.</p></td></tr>{% endif %}
+
+        {% if count.stories %}
+        <tr><td class="nt-email-inset" style="padding:0 24px;"><h2 style="margin:0;padding:10px 0;border-top:2px solid {{ design.accent_color }};border-bottom:1px solid {{ design.accent_color }};font-family:{{ design_fonts.body }};font-size:11px;line-height:1.5;letter-spacing:1.3px;color:{{ design.text_color }};">MORE FROM CAMPUS</h2></td></tr>
+        <tr><td class="nt-email-inset" style="padding:24px 24px 28px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;table-layout:fixed;border-collapse:collapse;">
+            <tr>{% for column in custom_email_columns %}<td class="nt-email-column {{ 'nt-email-column-first' if loop.first else 'nt-email-column-next' }}" data-column="{{ loop.index }}" width="{{ '100%' if custom_email_columns|length == 1 else '50%' }}" valign="top" style="width:{{ '100%' if custom_email_columns|length == 1 else '50%' }};vertical-align:top;padding:{{ '0' if custom_email_columns|length == 1 else '0 12px 0 0' if loop.first else '0 0 0 12px' }};">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;table-layout:fixed;border-collapse:collapse;">
+                {% for item in column %}<tr><td>{{ story(item, False, custom_email_columns|length == 1) }}</td></tr>{% if not loop.last %}<tr><td aria-hidden="true" style="height:24px;font-size:1px;line-height:24px;">&nbsp;</td></tr>{% endif %}{% endfor %}
+              </table>
+            </td>{% endfor %}</tr>
+          </table>
+        </td></tr>
+        {% endif %}
+
+        {% if issue.events %}
+        <tr><td class="nt-email-inset" style="padding:0 24px 28px;">
+          <h2 style="margin:0;padding:10px 0;border-top:2px solid {{ design.accent_color }};border-bottom:1px solid {{ design.accent_color }};font-family:{{ design_fonts.body }};font-size:11px;line-height:1.5;letter-spacing:1.3px;color:{{ design.text_color }};">COMING UP</h2>
+          <table class="nt-email-schedule" width="100%" cellpadding="0" cellspacing="0" style="width:100%;table-layout:fixed;border-collapse:collapse;font-family:{{ design_fonts.body }};font-size:13px;line-height:1.5;color:{{ design.text_color }};">
+            <caption style="padding:10px 0;text-align:left;font-family:{{ design_fonts.body }};font-size:10px;line-height:1.5;color:{{ design.text_color }};">Dates and times in Malaysia time</caption>
+            <thead><tr><th scope="col" width="27%" align="left" style="padding:8px 10px 8px 0;border-bottom:1px solid {{ design.accent_color }};font-size:10px;letter-spacing:.6px;">WHEN</th><th scope="col" width="55%" align="left" style="padding:8px 10px 8px 0;border-bottom:1px solid {{ design.accent_color }};font-size:10px;letter-spacing:.6px;">EVENT &amp; VENUE</th><th scope="col" width="18%" align="right" style="padding:8px 0;border-bottom:1px solid {{ design.accent_color }};font-size:10px;letter-spacing:.6px;">FEE</th></tr></thead>
+            <tbody>{% for ev in issue.events %}{% set e = ev.data %}<tr>
+              <th scope="row" align="left" valign="top" style="padding:12px 10px 12px 0;border-bottom:1px solid {{ design.accent_color }};font-weight:400;overflow-wrap:anywhere;"><strong>{{ e.date|nice_date }}</strong>{% if e.start_time %}<br>{{ e.start_time|hm }}{% endif %}</th>
+              <td valign="top" style="padding:12px 10px 12px 0;border-bottom:1px solid {{ design.accent_color }};overflow-wrap:anywhere;word-break:break-word;"><strong>{{ e.title }}</strong><br>{{ e.venue or 'Venue TBC' }}</td>
+              <td align="right" valign="top" style="padding:12px 0;border-bottom:1px solid {{ design.accent_color }};overflow-wrap:anywhere;word-break:break-word;">{{ e.fee or '—' }}</td>
+            </tr>{% endfor %}</tbody>
+          </table>
+        </td></tr>
+        {% endif %}
+
+        <tr><td class="nt-email-inset" style="padding:0 24px 24px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border-top:2px solid {{ design.accent_color }};"><tr><td style="padding:18px 0 0;font-family:{{ design_fonts.body }};font-size:11px;line-height:1.75;color:{{ design.text_color }};">
+            <strong style="font-family:{{ design_fonts.headline }};font-size:20px;line-height:1.3;color:{{ design.text_color }};">Campus Weekly</strong><br>
+            Every item was submitted by an APU club or office and approved by Student Affairs, in the club's own words.<br>BoardCast never asks for your password.
+            {% if prefs_url or unsubscribe_url %}<p style="margin:10px 0 0;">{% if prefs_url %}<a href="{{ prefs_url }}" style="color:{{ design.accent_color }};">Manage subscription</a>{% endif %}{% if prefs_url and unsubscribe_url %} &nbsp;·&nbsp; {% endif %}{% if unsubscribe_url %}<a href="{{ unsubscribe_url }}" style="color:{{ design.accent_color }};">Unsubscribe</a>{% endif %}</p>{% endif %}
+          </td></tr></table>
+        </td></tr>
+      </table>
+      <!--[if mso]></td></tr></table><![endif]-->
+    </td></tr>
+  </table>
+</body>
+</html>

@@ -11,13 +11,13 @@ function deferred() {
   return {promise, resolve, reject};
 }
 
-function fixture(request = async () => ({template: 'classic'})) {
+function fixture(request = async () => ({template: 'classic'}), libraryRequest = async () => ({themes: []})) {
   const elements = new Map(), calls = []; let pointerHit = null;
   const documentAssignments = [];
   class Element {
     constructor(value = '', id = '', tag = 'div') {
       this.id = id; this.value = value; this.tagName = tag.toUpperCase(); this.hidden = false; this.disabled = false; this.checked = false; this.textContent = ''; this._srcdoc = ''; this.attributes = new Map();
-      this.children = []; this.style = {}; this.classes = new Set();
+      this.children = []; this.style = {setProperty(name, value) { this[name] = value; }}; this.classes = new Set();
       this.classList = {add: name => this.classes.add(name), remove: name => this.classes.delete(name), contains: name => this.classes.has(name)};
     }
     get srcdoc() { return this._srcdoc; }
@@ -38,20 +38,48 @@ function fixture(request = async () => ({template: 'classic'})) {
     releasePointerCapture() { this.pointerCapture = null; }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element('', id)); return elements.get(id); };
-  const radios = ['classic', 'newspaper'].map(value => new Element(value));
+  const radios = ['classic', 'newspaper', 'custom'].map(value => new Element(value));
   get('newsletter-preview-frame').setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox');
   get('newsletter-preview-frame').setAttribute('title', 'Selected template preview');
   const context = vm.createContext({
     console,
-    Staff: {api: (route, options = {}) => { calls.push({route, ...options}); return request(route, options); }},
+    Staff: {api: (route, options = {}) => { calls.push({route, ...options}); return route.startsWith('/admin/api/newsletter-themes') ? libraryRequest(route, options) : request(route, options); }},
     document: {getElementById: get, querySelectorAll: () => radios, createElement: tag => new Element('', '', tag), elementFromPoint: () => pointerHit},
   });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'static', 'newsletter-theme-editor.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'static', 'newsletter-library.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'static', 'newsletter.js'), 'utf8'), context);
   const panel = vm.runInContext('Newsletter', context);
   const descendants = node => [node, ...node.children.flatMap(descendants)];
   const cards = () => descendants(get('newsletter-layout-canvas')).filter(node => node.getAttribute('data-story-id'));
   const card = id => cards().find(node => node.getAttribute('data-story-id') === id);
-  return {panel, get, radios, calls, documentAssignments, descendants, cards, card,
+  const themeNodes = () => descendants(get('newsletter-theme-builder'));
+  const themeBlock = id => themeNodes().find(node => node.getAttribute('data-theme-block') === id);
+  const themeCell = key => themeNodes().find(node => node.getAttribute('data-theme-cell') === key);
+  const library = vm.runInContext('ThemeLibrary', context);
+  const savedCards = () => descendants(get('newsletter-theme-library')).filter(node => node.getAttribute('data-saved-theme-id'));
+  const libraryNodes = () => descendants(get('newsletter-theme-save-panel'));
+  return {panel, library, get, radios, calls, documentAssignments, descendants, cards, card,
+    savedCards, libraryNodes,
+    chooseSaved(id) { savedCards().find(node => node.getAttribute('data-saved-theme-id') === id).onclick(); },
+    nameTheme(value) { const input = libraryNodes().find(node => node.id === 'newsletter-theme-name'); input.value = value; input.oninput(); },
+    saveTheme(mode = 'create') { return libraryNodes().find(node => node.id === 'newsletter-theme-' + mode).onclick(); },
+    themeNodes, themeBlock,
+    themeRows: () => themeNodes().filter(node => node.className === 'theme-row').map(row => ({cells: descendants(row).filter(node => node.getAttribute('data-theme-cell')).map(cell => cell.children.filter(node => node.getAttribute('data-theme-block')).map(node => node.getAttribute('data-theme-block')))})),
+    themeSection(name) { themeNodes().find(node => node.getAttribute('role') === 'tab' && node.textContent === name).onclick(); },
+    themeAction(label) { themeNodes().find(node => node.getAttribute('aria-label') === label).onclick(); },
+    themeColumns(section, row, value) { const node = themeNodes().find(node => node.getAttribute('aria-label') === 'Columns in ' + section + ' row ' + row); node.value = String(value); node.onchange(); },
+    themeMove(id, destination) { const node = descendants(themeBlock(id)).find(node => node.tagName === 'SELECT'); node.value = destination; node.onchange(); },
+    themeDrop(id, destination, before, pointer = false, cancel = false) {
+      const event = {pointerId: 2, button: 0, clientX: 0, clientY: 0, preventDefault() {}, stopPropagation() {}, dataTransfer: {setData() {}}};
+      const block = themeBlock(id), target = before ? themeBlock(before) : themeCell(destination);
+      if (pointer) {
+        const grip = descendants(block).find(node => node.className === 'theme-block-grip'); grip.onpointerdown(event); pointerHit = target;
+        const moved = {...event, clientX: 100, clientY: 100}; grip.onpointermove(moved);
+        if (cancel) grip.onpointercancel(); else grip.onpointerup(moved);
+        assert.equal(grip.hasPointerCapture(2), false);
+      } else { block.ondragstart(event); target.ondragover(event); target.ondrop(event); }
+    },
     choose(value) { for (const radio of radios) radio.checked = radio.value === value; radios.find(r => r.value === value).onchange(); },
     selected() { return radios.find(r => r.checked)?.value; },
     customize(checked = true) { get('newsletter-customize').checked = checked; get('newsletter-customize').onchange(); },
@@ -82,6 +110,11 @@ const frozen = (id = 'edition-a', layout = 'classic') => ({id, status: 'sent', l
 const sampleItems = ['a', 'b', 'c', 'd', 'e'].map((id, index) => ({id, title: 'Story ' + id, type: index % 2 ? 'announcement' : 'event', poster_url: '/uploads/' + id + '.png'}));
 const custom = (extra = {}) => ({headline_font: 'georgia', body_font: 'georgia', paper_color: '#F7F3E8', text_color: '#23231F', accent_color: '#9D3229', columns: 2, lead_image: 'left', lead_id: null, story_order: [], column_map: {}, ...extra});
 const designed = (extra = {}) => ({...editable('edition-a', 'newspaper'), layout_items: sampleItems, layout_lead_id: 'a', newsletter_design: null, ...extra});
+const namedTheme = (id = 'theme-a', name = 'Campus Spotlight', extra = {}) => ({id, name, revision: 1,
+  design: {headline_font: 'georgia', body_font: 'arial', paper_color: '#FFFFFF', text_color: '#1B1B1B', accent_color: '#0B7BB5', columns: 2, lead_image: 'left',
+    header_rows: [{cells: [['name']]}, {cells: [['date', 'intro']]}], story_rows: [{cells: [['picture'], ['title', 'details']]}]}, ...extra});
+const libraryMessage = f => f.libraryNodes().find(node => node.className === 'theme-save-status').textContent;
+const libraryWrites = f => f.calls.filter(call => call.route.startsWith('/admin/api/newsletter-themes') && ['POST', 'PUT'].includes(call.method));
 function layout(f) {
   return Object.fromEntries(f.descendants(f.get('newsletter-layout-canvas')).filter(node => node.getAttribute('data-destination'))
     .map(zone => [zone.getAttribute('data-destination'), zone.children.filter(node => node.getAttribute('data-story-id')).map(node => node.getAttribute('data-story-id'))]));
@@ -447,6 +480,235 @@ async function run() {
     await work;
     assertExactlyOnce(f); assert.equal(f.panel.blocksPublish(), false);
     console.log('PASS late settings metadata cannot overwrite a newer approved-story refresh');
+  }
+  {
+    const f = fixture(); await f.panel.init(); f.choose('custom');
+    assert.equal(f.get('newsletter-theme-builder').hidden, false);
+    assert.equal(f.get('newsletter-custom-fields').hidden, false);
+    assert.equal(f.get('newsletter-customize').checked, true);
+    assert.equal(f.get('newsletter-customize').disabled, true, 'Custom always has a design');
+    assert.equal(f.get('newsletter-lead-image-field').hidden, true, 'the placeholder layout owns image position');
+    assert.deepEqual(f.themeRows(), [{cells: [['name']]}, {cells: [['date', 'intro']]}]);
+    assert.equal(f.cards().length, 0, 'theme editing works before any approved stories exist');
+    f.customize(false); assert.equal(f.get('newsletter-customize').checked, true);
+    f.themeDrop('date', '0:0', 'name');
+    assert.deepEqual(f.themeRows(), [{cells: [['date', 'name']]}, {cells: [['intro']]}]);
+    f.themeMove('intro', '0:0');
+    assert.deepEqual(f.themeRows(), [{cells: [['date', 'name', 'intro']]}, {cells: [[]]}]);
+    f.themeAction('Move up: Introduction');
+    assert.deepEqual(f.themeRows(), [{cells: [['date', 'intro', 'name']]}, {cells: [[]]}]);
+    f.themeAction('Remove empty header row 2');
+    assert.deepEqual(f.themeRows(), [{cells: [['date', 'intro', 'name']]}]);
+    assert.equal(f.panel.blocksPublish(), true); assert.equal(f.calls.some(call => call.method === 'PUT'), false);
+    console.log('PASS Custom card enables placeholder editor with no submissions and accessible header moves');
+  }
+  {
+    const f = fixture(); await f.panel.init(); f.choose('custom'); f.themeSection('Story layout');
+    assert.deepEqual(f.themeRows(), [{cells: [['picture'], ['title', 'details']]}]);
+    f.themeDrop('title', '0:0', 'picture', true);
+    assert.deepEqual(f.themeRows(), [{cells: [['title', 'picture'], ['details']]}]);
+    f.themeDrop('picture', '0:1', null, true);
+    assert.deepEqual(f.themeRows(), [{cells: [['title'], ['details', 'picture']]}]);
+    const before = f.themeRows(); f.themeDrop('title', '0:1', null, true, true); assert.deepEqual(f.themeRows(), before);
+    f.themeColumns('story', 1, 1);
+    assert.deepEqual(f.themeRows(), [{cells: [['title', 'details', 'picture']]}], 'merging a row retains every placeholder in reading order');
+    f.themeAction('Add story row'); f.themeMove('picture', '1:0');
+    f.themeAction('Move story row 2 up');
+    assert.deepEqual(f.themeRows(), [{cells: [['picture']]}, {cells: [['title', 'details']]}]);
+    f.themeAction('Remove empty story row 1');
+    assert.equal(f.themeRows().length, 2, 'nonempty rows cannot lose their content');
+    for (let i = 0; i < 8; i++) f.themeAction('Add story row');
+    assert.equal(f.themeRows().length, 6, 'row count stays within the API bound');
+    assert.equal(f.themeNodes().find(node => node.getAttribute('aria-label') === 'Add story row').disabled, true);
+    console.log('PASS placeholder pointer dragging, cancellation, column merging and bounded row changes');
+  }
+  {
+    const f = fixture(async (route, options) => {
+      if (options.method === 'POST') return {html: 'custom theme', item_count: 5, source: 'edition'};
+      if (options.method === 'PUT') { const body = JSON.parse(options.body); return {template: body.template, design: body.design, applied_to_issue: false, issue_id: null}; }
+      return {template: 'classic'};
+    });
+    f.panel.setIssue({...designed(), ...frozen()}); await f.panel.init(); f.choose('custom');
+    f.themeMove('name', '1:0'); f.themeSection('Story layout'); f.themeDrop('picture', '0:1', 'details');
+    f.move('d', 'lead'); await f.preview();
+    const preview = JSON.parse(f.calls.find(call => call.method === 'POST').body);
+    assert.equal(preview.template, 'custom'); assert.equal(preview.issue_id, 'edition-a'); assert.equal(preview.design.lead_id, 'd');
+    assert.deepEqual(preview.design.header_rows, [{cells: [[]]}, {cells: [['date', 'intro', 'name']]}]);
+    assert.deepEqual(preview.design.story_rows, [{cells: [[], ['title', 'picture', 'details']]}]);
+    await f.save();
+    const save = JSON.parse(f.calls.find(call => call.method === 'PUT').body);
+    assert.deepEqual(save.design.header_rows, preview.design.header_rows); assert.deepEqual(save.design.story_rows, preview.design.story_rows);
+    for (const key of ['lead_id', 'story_order', 'column_map']) assert.equal(Object.hasOwn(save.design, key), false);
+    assert.equal(f.panel.blocksPublish(), false); assert.equal(f.selected(), 'custom');
+    assert.deepEqual(f.themeRows(), preview.design.story_rows, 'saving a future theme retains its reusable structure');
+    f.panel.setIssue({...editable('new-custom', 'custom'), newsletter_design: save.design});
+    assert.deepEqual(f.themeRows(), preview.design.story_rows); assert.equal(f.panel.blocksPublish(), false);
+    console.log('PASS Custom preview/save preserves reusable placeholders while frozen story placements stay preview-only');
+  }
+  {
+    const pending = deferred(); const f = fixture(async (route, options) => options.method === 'POST' ? pending.promise : {template: 'custom', design: null});
+    await f.panel.init(); assert.equal(f.panel.blocksPublish(), false, 'a Custom default resolves safely even without stored design data');
+    const work = f.preview(); f.themeMove('name', '1:0');
+    pending.resolve({html: 'OLD THEME', item_count: 0}); await work;
+    assert.equal(f.get('newsletter-preview-panel').hidden, true); assert.equal(f.get('newsletter-preview-frame').srcdoc, '');
+    assert.equal(f.panel.blocksPublish(), true);
+    f.get('newsletter-reset-design').onclick();
+    assert.deepEqual(f.themeRows(), [{cells: [['name']]}, {cells: [['date', 'intro']]}]);
+    assert.equal(f.get('newsletter-customize').checked, true); assert.equal(f.panel.blocksPublish(), false);
+    console.log('PASS theme mutation invalidates stale previews and Custom reset keeps a valid editable theme');
+  }
+  {
+    const pending = deferred();
+    const f = fixture(async (route, options) => options.method === 'PUT' ? pending.promise : {template: 'custom', design: null});
+    await f.panel.init(); f.themeMove('name', '1:0'); const before = f.themeRows(); const work = f.save();
+    assert.ok(f.themeNodes().filter(node => ['SELECT', 'BUTTON'].includes(node.tagName)).every(node => node.disabled));
+    f.themeMove('name', '0:0'); f.themeAction('Add header row'); assert.deepEqual(f.themeRows(), before);
+    pending.reject(new Error('Try again')); await work;
+    assert.deepEqual(f.themeRows(), before); assert.equal(f.panel.blocksPublish(), true);
+    f.panel.reset(); f.panel.setIssue({...editable('next-account', 'custom'), newsletter_design: null}); await f.panel.init();
+    assert.deepEqual(f.themeRows(), [{cells: [['name']]}, {cells: [['date', 'intro']]}]);
+    console.log('PASS pending theme save locks all structural controls and account reset discards old placeholders');
+  }
+  {
+    const badRows = [{cells: [['name', 'name', '<script>alert(1)</script>']]}];
+    const f = fixture(async () => ({template: 'custom', design: custom({header_rows: badRows, story_rows: [{cells: [['title']]}]})}));
+    await f.panel.init(); assert.deepEqual(f.themeRows(), [{cells: [['name']]}, {cells: [['date', 'intro']]}]);
+    assert.ok(!f.themeNodes().some(node => node.textContent.includes('<script>')));
+    f.themeSection('Story layout'); assert.deepEqual(f.themeRows(), [{cells: [['picture'], ['title', 'details']]}]);
+    console.log('PASS invalid placeholder schemas fall back without rendering untrusted HTML or dropping content');
+  }
+  {
+    const theme = namedTheme();
+    const f = fixture(async () => ({template: 'classic'}), async () => ({themes: [theme]}));
+    f.panel.setIssue(designed({newsletter_design: custom({lead_id: 'b', story_order: ['e', 'd', 'c', 'a'], column_map: {e: 2, d: 1, c: 2, a: 1}})}));
+    await f.panel.init(); const prior = layout(f); f.chooseSaved(theme.id);
+    assert.equal(f.savedCards()[0].getAttribute('aria-pressed'), 'true');
+    assert.ok(f.radios.every(radio => !radio.checked));
+    assert.equal(f.get('newsletter-customize').checked, true); assert.deepEqual(layout(f), prior);
+    assert.equal(f.get('newsletter-headline-font').value, 'georgia'); assert.equal(f.panel.blocksPublish(), true);
+    assert.equal(libraryWrites(f).length, 0); assert.equal(f.calls.some(call => call.route === '/admin/api/newsletter-template' && call.method === 'PUT'), false);
+    f.choose('classic'); assert.equal(f.savedCards()[0].getAttribute('aria-pressed'), 'false');
+    console.log('PASS saved-theme selection copies appearance, preserves story placement and waits for explicit application');
+  }
+  {
+    const pending = deferred();
+    const f = fixture(async () => ({template: 'classic'}), async (route, options) => options.method === 'POST' ? pending.promise : {themes: []});
+    f.panel.setIssue(designed()); await f.panel.init(); f.choose('custom'); f.themeMove('name', '1:0'); f.move('b', 'lead'); f.nameTheme('  Spring   Campus  ');
+    const before = f.themeRows(), work = f.saveTheme();
+    assert.ok(f.radios.every(radio => radio.disabled)); assert.equal(f.get('newsletter-save').disabled, true);
+    const payload = JSON.parse(libraryWrites(f)[0].body);
+    assert.equal(payload.name, 'Spring Campus'); for (const key of ['lead_id', 'story_order', 'column_map']) assert.equal(Object.hasOwn(payload.design, key), false);
+    f.change('headline-font', 'verdana'); assert.equal(f.get('newsletter-headline-font').value, 'arial');
+    pending.resolve({theme: namedTheme('new-theme', payload.name, {design: payload.design})}); await work;
+    assert.deepEqual(f.themeRows(), before); assert.equal(f.panel.blocksPublish(), true); assert.equal(f.get('newsletter-current').textContent, 'Newspaper');
+    assert.equal(f.savedCards().length, 1); assert.equal(f.savedCards()[0].getAttribute('aria-pressed'), 'true');
+    assert.match(libraryMessage(f), /saved to your themes/);
+    assert.equal(f.calls.some(call => call.route === '/admin/api/newsletter-template' && call.method === 'PUT'), false);
+    console.log('PASS named save strips edition placements, locks duplicate writes and leaves the edition unsaved');
+  }
+  {
+    const theme = namedTheme(); let current = theme;
+    const f = fixture(async () => ({template: 'classic'}), async (route, options) => {
+      if (!options.method) return {themes: [current]};
+      const data = JSON.parse(options.body); current = {...current, name: data.name, revision: current.revision + 1, design: data.design || current.design}; return {theme: current};
+    });
+    await f.panel.init(); f.chooseSaved(theme.id); f.change('headline-font', 'verdana'); f.nameTheme('Campus Weekly Green');
+    await f.saveTheme('rename');
+    const rename = JSON.parse(libraryWrites(f)[0].body);
+    assert.deepEqual(rename, {name: 'Campus Weekly Green', revision: 1});
+    assert.equal(current.design.headline_font, 'georgia'); assert.equal(f.get('newsletter-headline-font').value, 'verdana');
+    assert.equal(f.panel.blocksPublish(), true); await f.saveTheme('update');
+    const update = JSON.parse(libraryWrites(f)[1].body);
+    assert.equal(update.revision, 2); assert.equal(update.design.headline_font, 'verdana');
+    assert.equal(current.revision, 3); assert.equal(f.savedCards()[0].getAttribute('data-saved-theme-id'), theme.id);
+    assert.equal(f.panel.blocksPublish(), true);
+    console.log('PASS rename preserves saved design while update uses the new revision and never applies the edition');
+  }
+  {
+    const theme = namedTheme(); let latest = theme, fail = true;
+    const f = fixture(async () => ({template: 'classic'}), async (route, options) => {
+      if (!options.method) return {themes: [latest]};
+      if (fail) throw new Error('This theme was updated by another reviewer. Reload it and try again.');
+      return {theme: latest};
+    });
+    await f.panel.init(); f.chooseSaved(theme.id); f.change('body-font', 'times'); await f.saveTheme('update');
+    assert.match(libraryMessage(f), /Your design is still here/); assert.equal(f.get('newsletter-body-font').value, 'times');
+    latest = {...theme, revision: 2}; await f.library.load(); await f.saveTheme('update');
+    assert.equal(libraryWrites(f).length, 1, 'refreshing the list must not silently authorize overwriting a newer theme revision');
+    assert.match(libraryMessage(f), /Select its card again/); f.chooseSaved(theme.id); fail = false; await f.saveTheme('update');
+    assert.equal(JSON.parse(libraryWrites(f)[1].body).revision, 2);
+    console.log('PASS update conflicts preserve the draft and require explicitly loading the latest theme revision');
+  }
+  {
+    const f = fixture(async () => ({template: 'classic'})); await f.panel.init(); f.choose('custom');
+    for (const value of ['   ', 'x'.repeat(61), 'Bad\u0000Name']) { f.nameTheme(value); await f.saveTheme(); }
+    assert.equal(libraryWrites(f).length, 0); assert.equal(f.panel.blocksPublish(), true); assert.match(libraryMessage(f), /control characters/);
+    const theme = namedTheme('safe-name', '<img src=x onerror=alert(1)>');
+    const safe = fixture(async () => ({template: 'classic'}), async () => ({themes: [theme]})); await safe.panel.init();
+    const title = safe.descendants(safe.savedCards()[0]).find(node => node.className === 'theme-library-title');
+    assert.equal(title.textContent, theme.name); assert.equal(title.children.length, 0);
+    console.log('PASS invalid names stay local and saved-theme names render as text');
+  }
+  {
+    let fail = true; const theme = namedTheme();
+    const f = fixture(async () => ({template: 'classic'}), async () => { if (fail) throw new Error('Offline'); return {themes: [theme]}; });
+    await f.panel.init(); assert.equal(f.panel.blocksPublish(), false); assert.ok(f.radios.every(radio => !radio.disabled));
+    const retry = f.descendants(f.get('newsletter-theme-library')).find(node => node.id === 'newsletter-themes-reload');
+    assert.equal(retry.textContent, 'Retry saved themes'); fail = false; await retry.onclick(); assert.equal(f.savedCards().length, 1);
+    console.log('PASS library failure leaves presets available and exposes retry');
+  }
+  {
+    const a = namedTheme(), b = namedTheme('theme-b', 'Identical copy');
+    const f = fixture(async () => ({template: 'custom', design: a.design}), async () => ({themes: [a, b]}));
+    await f.panel.init(); assert.equal(f.get('newsletter-current').textContent, 'Custom'); assert.ok(f.savedCards().every(card => card.getAttribute('aria-pressed') === 'false'));
+    f.chooseSaved(b.id); assert.equal(f.savedCards().find(card => card.getAttribute('data-saved-theme-id') === b.id).getAttribute('aria-pressed'), 'true');
+    const unique = fixture(async () => ({template: 'custom', design: a.design}), async () => ({themes: [a]}));
+    await unique.panel.init(); assert.equal(unique.get('newsletter-current').textContent, a.name); assert.equal(unique.savedCards()[0].getAttribute('aria-pressed'), 'true');
+    assert.equal(unique.panel.blocksPublish(), false);
+    console.log('PASS reload infers only an unambiguous named appearance and preserves explicit card choice');
+  }
+  {
+    const pending = deferred(), theme = namedTheme(); let oldSession = true;
+    const f = fixture(async () => ({template: 'classic'}), async () => oldSession ? pending.promise : {themes: []});
+    await f.panel.init(); f.panel.reset(); oldSession = false; await f.panel.init(); pending.resolve({themes: [theme]}); await pending.promise; await Promise.resolve();
+    assert.equal(f.savedCards().length, 0);
+    const pendingWrite = deferred();
+    const g = fixture(async () => ({template: 'classic'}), async (route, options) => options.method === 'POST' ? pendingWrite.promise : {themes: []});
+    await g.panel.init(); g.choose('custom'); g.nameTheme('Old account'); const work = g.saveTheme(); g.panel.reset(); await g.panel.init();
+    pendingWrite.resolve({theme}); await work; assert.equal(g.savedCards().length, 0); assert.equal(g.get('newsletter-theme-save-panel').hidden, true);
+    console.log('PASS account changes discard late library loads and save responses');
+  }
+  {
+    const theme = namedTheme(), stale = deferred(), pendingWrite = deferred(); let loads = 0;
+    const f = fixture(async () => ({template: 'classic'}), async (route, options) => options.method === 'POST' ? pendingWrite.promise : ++loads === 1 ? {themes: []} : stale.promise);
+    await f.panel.init(); const loading = f.library.load(); f.choose('custom'); f.nameTheme(theme.name); const work = f.saveTheme();
+    pendingWrite.resolve({theme}); await work; stale.resolve({themes: []}); await loading;
+    assert.equal(f.savedCards().length, 1); assert.equal(f.savedCards()[0].getAttribute('data-saved-theme-id'), theme.id);
+    console.log('PASS a stale library reload cannot erase a newer saved theme');
+  }
+  {
+    const pending = deferred(), theme = namedTheme();
+    const f = fixture(async () => ({template: 'classic'}), async (route, options) => options.method === 'POST' ? pending.promise : {themes: []});
+    f.panel.setIssue(editable('first')); await f.panel.init(); f.choose('custom'); f.nameTheme(theme.name); const work = f.saveTheme();
+    f.panel.setIssue(editable('next', 'newspaper')); pending.resolve({theme}); await work;
+    assert.equal(f.selected(), 'newspaper'); assert.equal(f.get('newsletter-current').textContent, 'Newspaper'); assert.equal(f.panel.blocksPublish(), false);
+    assert.equal(f.savedCards().length, 1); assert.equal(f.savedCards()[0].getAttribute('aria-pressed'), 'false');
+    console.log('PASS an edition switch during library save keeps its own draft and only adds the library record');
+  }
+  {
+    const a = namedTheme(), b = namedTheme('theme-b', 'Identical copy');
+    const f = fixture(async (route, options) => options.method === 'PUT'
+      ? {template: 'custom', applied_to_issue: true, issue_id: 'edition-a', issue_design: JSON.parse(options.body).design, design: JSON.parse(options.body).design}
+      : {template: 'classic'}, async () => ({themes: [a, b]}));
+    f.panel.setIssue(editable()); await f.panel.init(); f.chooseSaved(b.id); await f.save();
+    assert.equal(f.savedCards().find(card => card.getAttribute('data-saved-theme-id') === b.id).getAttribute('aria-pressed'), 'true');
+    f.change('headline-font', 'verdana'); await f.save();
+    assert.equal(f.panel.blocksPublish(), false); assert.equal(f.get('newsletter-current').textContent, 'Custom');
+    assert.equal(f.savedCards().find(card => card.getAttribute('data-saved-theme-id') === b.id).getAttribute('aria-pressed'), 'true');
+    assert.ok(f.libraryNodes().some(node => node.id === 'newsletter-theme-update'), 'applying an edited named draft must still allow updating its source theme');
+    f.panel.setIssue(editable('other-edition', 'custom'));
+    assert.ok(f.savedCards().every(card => card.getAttribute('aria-pressed') === 'false'));
+    console.log('PASS explicit named source survives applying its draft but is cleared for a different edition');
   }
 }
 

@@ -3,7 +3,9 @@
 {% block head %}
 {% if client_id %}<script src="https://accounts.google.com/gsi/client" async defer></script>{% endif %}
 <link rel="stylesheet" href="/static/newsletter-editor.css?v=20261110-1">
-<script src="/static/staff.js?v=20261110-1" defer></script><script src="/static/newsletter.js?v=20261110-7" defer></script><script src="/static/review.js?v=20261110-3" defer></script>
+<link rel="stylesheet" href="/static/newsletter-theme-editor.css?v=20261110-1">
+<link rel="stylesheet" href="/static/newsletter-library.css?v=20261110-1">
+<script src="/static/staff.js?v=20261110-1" defer></script><script src="/static/newsletter-theme-editor.js?v=20261110-1" defer></script><script src="/static/newsletter-library.js?v=20261110-1" defer></script><script src="/static/newsletter.js?v=20261110-9" defer></script><script src="/static/review.js?v=20261110-4" defer></script>
 {% endblock %}
 {% block topbar_right %}<div class="row"><span id="who" class="muted">Staff sign-in</span><button id="signout" class="text-button" type="button" hidden>Switch account</button></div>{% endblock %}
 {% block content %}
@@ -30,7 +32,11 @@
         <label class="newsletter-choice"><input type="radio" name="newsletter-template" value="newspaper">
           <span class="newsletter-choice-content"><span class="template-thumb template-thumb-newspaper" aria-hidden="true"><span class="thumb-mast">Campus Weekly</span><span class="thumb-front"><span class="thumb-photo"></span><span class="thumb-story"><b></b><i></i><i></i><i></i></span></span><span class="thumb-news-columns"><span class="thumb-story"><b></b><i></i><i></i></span><span class="thumb-story"><b></b><i></i><i></i></span><span class="thumb-story"><b></b><i></i><i></i></span></span></span><span class="template-choice-title">Newspaper</span><span class="template-choice-description">A lead story with its poster, followed by columns of campus news.</span></span>
         </label>
+        <label class="newsletter-choice"><input type="radio" name="newsletter-template" value="custom">
+          <span class="newsletter-choice-content"><span class="template-thumb template-thumb-custom" aria-hidden="true"><span class="thumb-custom-title"><span>⠿</span> Your title here</span><span class="thumb-custom-row"><span class="thumb-custom-picture"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="5" width="24" height="22" rx="3"/><circle cx="12" cy="12" r="2"/><path d="m5 23 7-7 5 5 4-4 7 7"/></svg></span><span class="thumb-custom-copy"><b>⠿ Story title</b><i></i><i></i><i></i></span></span><span class="thumb-custom-add">+ Arrange it your way</span></span><span class="template-choice-title">Custom</span><span class="template-choice-description">Build your own theme. Drag title, picture and text placeholders into place.</span></span>
+        </label>
       </fieldset>
+      <section id="newsletter-theme-library" aria-label="Saved newsletter themes"></section>
       <label class="editor-toggle"><input id="newsletter-customize" type="checkbox"><span><strong>Customize this template</strong><small>Choose your fonts and colours, then arrange the stories.</small></span><span class="editor-toggle-mark" aria-hidden="true"></span></label>
       <div id="newsletter-custom-fields" class="newsletter-editor" hidden>
         <aside class="editor-settings" aria-label="Newsletter appearance">
@@ -46,14 +52,18 @@
           </fieldset>
           <label for="newsletter-columns">Story columns</label><select id="newsletter-columns"><option value="1">One column</option><option value="2">Two columns</option><option value="3">Three columns</option></select>
           <p class="editor-field-note">Email uses up to two columns. All layouts stack on mobile.</p>
-          <label for="newsletter-lead-image">Lead poster position</label><select id="newsletter-lead-image"><option value="left">Left of the story</option><option value="right">Right of the story</option></select>
+          <div id="newsletter-lead-image-field"><label for="newsletter-lead-image">Lead poster position</label><select id="newsletter-lead-image"><option value="left">Left of the story</option><option value="right">Right of the story</option></select></div>
         </aside>
+        <div class="editor-workspace">
+        <section id="newsletter-theme-builder" hidden aria-label="Custom theme builder"></section>
         <section class="editor-arrangement" aria-labelledby="editor-arrangement-title">
           <div class="editor-arrangement-heading"><span class="eyebrow">YOUR EDITION</span><h3 id="editor-arrangement-title">Arrange your stories</h3><p>Drag a story into the lead area or a column. Use its move controls on mobile or with a keyboard.</p></div>
           <p id="newsletter-layout-help" class="editor-layout-help"></p>
           <div id="newsletter-layout-canvas" class="editor-canvas"></div>
         </section>
+        </div>
       </div>
+      <section id="newsletter-theme-save-panel" aria-label="Save a named theme" hidden></section>
       <div class="newsletter-controls"><p id="newsletter-status" class="muted" role="status" aria-live="polite"></p><div class="row"><button id="newsletter-preview" class="btn secondary" type="button">Preview newsletter</button><button id="newsletter-save" class="btn" type="button" disabled>Use this template</button></div></div>
     </div>
   </details>
@@ -66,7 +76,7 @@
         <button id="tab-draft" class="tab" role="tab" aria-selected="false" aria-controls="list" tabindex="-1" data-status="draft" type="button">Needs fixing <span id="count-draft">0</span></button>
         <button id="tab-approved" class="tab" role="tab" aria-selected="false" aria-controls="list" tabindex="-1" data-status="approved" type="button">Approved <span id="count-approved">0</span></button>
       </div>
-      <div id="list" role="tabpanel" aria-labelledby="tab-pending" aria-live="polite"></div>
+      <div id="list" role="tabpanel" aria-labelledby="tab-pending" aria-live="polite" tabindex="0"></div>
     </aside>
     <section id="detail" class="review-detail card" aria-live="polite"><div class="empty-state"><h2>Select a submission</h2><p class="muted">The source poster and publication preview will appear here.</p></div></section>
   </div>

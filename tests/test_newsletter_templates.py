@@ -76,7 +76,7 @@ def test_default_layout_and_available_choices(api, layout_db):
     response = api.get(PATH, headers=headers())
     assert response.status_code == 200
     assert response.json()["template"] == "classic"
-    assert {entry["id"] for entry in response.json()["templates"]} == {"classic", "newspaper"}
+    assert {entry["id"] for entry in response.json()["templates"]} == {"classic", "newspaper", "custom"}
     assert not layout_db.collection("settings").document("publication").get().exists
 
 

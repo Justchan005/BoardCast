@@ -131,11 +131,55 @@ def upsert_subscriber(sub: dict) -> None:
 
 # ---------- issues + clicks ----------
 
+def newsletter_design_from_storage(value):
+    """Unwrap Firestore-safe theme cells; validation belongs to issue_builder."""
+    if not isinstance(value, dict):
+        return value
+    design = dict(value)
+    for name in ("header_rows", "story_rows"):
+        rows = design.get(name)
+        if isinstance(rows, list):
+            design[name] = [
+                {**row, "cells": [cell["blocks"] if isinstance(cell, dict) and set(cell) == {"blocks"}
+                                  else cell for cell in row["cells"]]}
+                if isinstance(row, dict) and isinstance(row.get("cells"), list) else row
+                for row in rows
+            ]
+    return design
+
+
+def _firestore_publication_fields(fields: dict) -> dict:
+    """Wrap only newsletter cells: Standard Firestore forbids arrays of arrays.
+
+    The API and local JSON store retain the editor's list-of-lists representation.
+    Maps around individual cells keep the same order and support empty drop targets.
+    Snapshots use this exact encoding too, so resumed delivery stays readable.
+    """
+    result = dict(fields)
+    value = result.get("newsletter_design")
+    if isinstance(value, dict):
+        design = dict(value)
+        for name in ("header_rows", "story_rows"):
+            rows = design.get(name)
+            if isinstance(rows, list):
+                design[name] = [
+                    {**row, "cells": [{"blocks": list(cell)} if isinstance(cell, list) else cell
+                                      for cell in row["cells"]]}
+                    if isinstance(row, dict) and isinstance(row.get("cells"), list) else row
+                    for row in rows
+                ]
+        result["newsletter_design"] = design
+    if isinstance(result.get("delivery_snapshot"), dict):
+        result["delivery_snapshot"] = _firestore_publication_fields(result["delivery_snapshot"])
+    return result
+
+
 def save_issue(issue: dict) -> str:
     issue_id = issue.get("id") or uuid.uuid4().hex[:10]
     issue["id"] = issue_id
     issue.setdefault("created_at", now())
-    db().collection("issues").document(issue_id).set(issue)
+    fields = issue if config.LOCAL_MODE else _firestore_publication_fields(issue)
+    db().collection("issues").document(issue_id).set(fields)
     return issue_id
 
 
@@ -164,7 +208,8 @@ def atomic_documents(keys: list[tuple[str, str]], transform) -> dict | None:
             if transaction is not None:
                 # Replace each supplied top-level field, including entire maps, as
                 # LocalClient does. merge=True would recursively retain removed keys.
-                transaction.set(refs[key], fields, merge=[FieldPath(field).to_api_repr() for field in fields])
+                transaction.set(refs[key], _firestore_publication_fields(fields),
+                                merge=[FieldPath(field).to_api_repr() for field in fields])
             else:
                 refs[key].set(fields, merge=True)
             result[key] = {**(rows[key] or {}), **fields}

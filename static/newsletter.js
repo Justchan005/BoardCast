@@ -2,7 +2,7 @@
 const Newsletter = (() => {
   const $ = id => document.getElementById(id);
   const radios = [...document.querySelectorAll('input[name="newsletter-template"]')];
-  const labels = {classic: 'Classic', newspaper: 'Newspaper'};
+  const labels = {classic: 'Classic', newspaper: 'Newspaper', custom: 'Custom'};
   const fontIds = ['georgia', 'times', 'arial', 'verdana'];
   const colorFields = ['paper_color', 'text_color', 'accent_color'];
   const fields = ['headline_font', 'body_font', ...colorFields, 'columns', 'lead_image'];
@@ -10,6 +10,7 @@ const Newsletter = (() => {
   const presetDefaults = {
     classic: {headline_font: 'arial', body_font: 'arial', paper_color: '#FFFFFF', text_color: '#1B1B1B', accent_color: '#0B7BB5', columns: 1, lead_image: 'left'},
     newspaper: {headline_font: 'georgia', body_font: 'georgia', paper_color: '#F7F3E8', text_color: '#23231F', accent_color: '#9D3229', columns: 2, lead_image: 'left'},
+    custom: {headline_font: 'arial', body_font: 'arial', paper_color: '#FFFFFF', text_color: '#1B1B1B', accent_color: '#0B7BB5', columns: 1, lead_image: 'left'},
   };
   let defaults = {...presetDefaults};
   let issue = null, preference = 'classic', selected = 'classic', preferenceKnown = false;
@@ -22,7 +23,7 @@ const Newsletter = (() => {
   const editable = () => !!issue && issue.layout_editable === true;
   const baseline = () => editable() ? template(issue.newsletter_template) : preference;
   const baselineDesign = () => editable() ? issue.newsletter_design ?? null : preferenceDesign;
-  const busy = () => !initialized || loading || saving;
+  const busy = () => !initialized || loading || saving || ThemeLibrary.isSaving();
   const clone = value => value == null ? null : JSON.parse(JSON.stringify(value));
   function items() {
     const seen = new Set();
@@ -32,12 +33,17 @@ const Newsletter = (() => {
     });
   }
   function normalized(value, preset = selected) {
-    if (!value) return null;
+    if (!value && preset !== 'custom') return null;
+    value = value || defaults.custom;
     const base = defaults[preset] || presetDefaults[preset], result = {};
     for (const field of ['headline_font', 'body_font']) result[field] = fontIds.includes(value[field]) ? value[field] : base[field];
     for (const field of colorFields) result[field] = /^#[\da-f]{6}$/i.test(value[field] || '') ? value[field].toUpperCase() : base[field];
     result.columns = [1, 2, 3].includes(Number(value.columns)) ? Number(value.columns) : base.columns;
     result.lead_image = ['left', 'right'].includes(value.lead_image) ? value.lead_image : base.lead_image;
+    for (const section of ['header', 'story']) {
+      const key = section + '_rows';
+      if (preset === 'custom' || value[key] != null) result[key] = ThemeEditor.normalizeRows(value[key], section);
+    }
     const ids = new Set(items().map(item => item.id));
     result.lead_id = ids.has(value.lead_id) ? value.lead_id : null;
     result.story_order = [...new Set(Array.isArray(value.story_order) ? value.story_order : [])].filter(id => ids.has(id));
@@ -50,10 +56,11 @@ const Newsletter = (() => {
   }
   const signature = (value, preset = selected) => JSON.stringify(normalized(value, preset));
   const dirty = () => !preferenceKnown || selected !== baseline() || signature(design) !== signature(baselineDesign(), baseline());
-  function blocksPublish() { return initialized && (loading || saving || dirty()); }
+  function blocksPublish() { return initialized && (loading || saving || ThemeLibrary.isSaving() || dirty()); }
   function status(message) { $('newsletter-status').textContent = message; }
-  function restoreBaseline() { selected = baseline(); design = clone(baselineDesign()); }
-  function savedStatus() { return labels[baseline()] + ' is saved' + (editable() ? ' for this edition.' : ' for future editions.'); }
+  function restoreBaseline() { selected = baseline(); design = selected === 'custom' ? normalized(baselineDesign()) : clone(baselineDesign()); ThemeLibrary.syncSelection(selected, design, true); }
+  function designLabel(preset, value) { return ThemeLibrary.label(preset, value) || labels[preset]; }
+  function savedStatus() { return designLabel(baseline(), baselineDesign()) + ' is saved' + (editable() ? ' for this edition.' : ' for future editions.'); }
   function clearFrame() { const frame = $('newsletter-preview-frame'); frame.removeAttribute('src'); frame.srcdoc = ''; }
   function clearPreview() {
     previewSerial++; previewing = false;
@@ -240,22 +247,26 @@ const Newsletter = (() => {
   }
   function render() {
     $('newsletter-designer').hidden = !initialized;
-    for (const radio of radios) { radio.checked = radio.value === selected; radio.disabled = busy(); }
-    $('newsletter-current').textContent = editable() ? labels[baseline()] : preferenceKnown ? labels[preference] : 'Not loaded';
+    for (const radio of radios) { radio.checked = radio.value === selected && !(selected === 'custom' && ThemeLibrary.hasSelection()); radio.disabled = busy(); }
+    $('newsletter-current').textContent = editable() ? designLabel(baseline(), baselineDesign()) : preferenceKnown ? designLabel(preference, preferenceDesign) : 'Not loaded';
     $('newsletter-scope').textContent = editable() ? 'Applies to this preview edition and future editions.'
       : issue ? 'This edition uses ' + labels[template(issue.newsletter_template)] + ' and its layout is fixed. Your choice applies to future editions only.'
       : 'Applies to future editions. Build a preview after saving your choice.';
-    $('newsletter-customize').checked = !!design; $('newsletter-customize').disabled = busy();
+    $('newsletter-customize').checked = !!design; $('newsletter-customize').disabled = busy() || selected === 'custom';
     $('newsletter-custom-fields').hidden = !design;
     const values = normalized(design || defaults[selected]);
     for (const field of fields) { control(field).value = String(values[field]); control(field).disabled = busy() || !design; }
     for (const field of colorFields) { const hex = $(control(field).id + '-value'); hex.value = values[field]; hex.textContent = values[field]; hex.disabled = busy() || !design; }
     $('newsletter-reset-design').disabled = busy() || !design;
+    $('newsletter-theme-builder').hidden = selected !== 'custom';
+    $('newsletter-lead-image-field').hidden = selected === 'custom';
+    ThemeEditor.setDesign(values, busy() || !design);
     $('newsletter-layout-help').textContent = editable()
       ? 'Drag stories between the lead and columns, or use each story’s Move menu and arrow buttons. Save to apply this arrangement to the preview edition.'
       : 'Story arrangement is for this candidate preview only. Saving keeps fonts, colours and column settings for future editions, then resets the arrangement. Existing editions stay unchanged.';
     renderCanvas();
     $('newsletter-save').disabled = busy() || !dirty(); $('newsletter-preview').disabled = busy() || previewing;
+    ThemeLibrary.setDraft({template: selected, design: futureDesign(normalized(design)), locked: busy()});
     onStateChange();
   }
   function setIssue(value, source = null) {
@@ -272,6 +283,7 @@ const Newsletter = (() => {
     const changedLayout = oldLayout !== JSON.stringify([issue?.newsletter_template, issue?.newsletter_design, issue?.layout_items, issue?.layout_lead_id]);
     if (changedIssue || changedLock || changedLayout || changedApproved) { contextVersion++; clearPreview(); cleanDrag(); }
     if (!initialized || changedIssue || changedLock) {
+      ThemeLibrary.clearSelection();
       restoreBaseline();
       if (initialized && changedIssue && hadDirtyChoice) status((issue ? 'A different edition was loaded.' : 'There is no current edition.') + ' The previous unsaved choice was cleared.');
       else if (initialized && changedLock && !editable() && issue) status('This edition can no longer change layout. Choose a template for future editions.');
@@ -284,7 +296,9 @@ const Newsletter = (() => {
     const loginEpoch = ++epoch, itemsRevision = approvedRevision;
     onStateChange = options.onStateChange || (() => {}); onSaved = options.onSaved || (async () => {});
     initialized = true; loading = true; saving = false; preferenceKnown = false;
+    ThemeLibrary.reset();
     saveSerial++; clearPreview(); restoreBaseline(); status('Loading the saved template…'); render();
+    void ThemeLibrary.load();
     try {
       const result = await Staff.api('/admin/api/newsletter-template'); if (loginEpoch !== epoch) return;
       defaults = {...presetDefaults, ...result.design_defaults};
@@ -347,22 +361,27 @@ const Newsletter = (() => {
     epoch++; contextVersion++; saveSerial++; initialized = loading = saving = false;
     issue = null; preference = selected = 'classic'; preferenceKnown = false; preferenceDesign = design = null;
     approvedItems = []; approvedLead = null; approvedRevision++; defaults = {...presetDefaults};
-    clearPreview(); cleanDrag(); status(''); render(); onStateChange = () => {}; onSaved = async () => {};
+    clearPreview(); cleanDrag(); ThemeEditor.reset(); ThemeLibrary.reset(); status(''); render(); onStateChange = () => {}; onSaved = async () => {};
   }
   for (const radio of radios) radio.addEventListener('change', () => {
     if (!radio.checked) return;
     if (busy()) { render(); return; }
+    ThemeLibrary.clearSelection();
     selected = template(radio.value);
+    if (selected === 'custom') design = normalized(design || defaults.custom);
     changed(labels[selected] + ' selected.');
   });
   $('newsletter-customize').addEventListener('change', () => {
-    if (busy()) { render(); return; }
+    if (busy() || selected === 'custom') { render(); return; }
     design = $('newsletter-customize').checked ? normalized(defaults[selected]) : null;
     if (design) saveArrangement(arrangement());
     changed(design ? 'Custom design enabled.' : 'Preset design selected.');
   });
   $('newsletter-reset-design').addEventListener('click', () => {
-    if (busy()) return; design = null; changed('Preset design selected.');
+    if (busy()) return;
+    ThemeLibrary.clearSelection();
+    design = selected === 'custom' ? normalized(defaults.custom) : null;
+    ThemeEditor.reset(); changed(selected === 'custom' ? 'Custom theme reset to its starting layout.' : 'Preset design selected.');
   });
   for (const field of fields) {
     const node = control(field);
@@ -386,6 +405,21 @@ const Newsletter = (() => {
     hex.addEventListener('input', () => updateHex(false));
     hex.addEventListener('change', () => updateHex(true));
   }
+  ThemeEditor.init($('newsletter-theme-builder'), (rows, message) => {
+    if (busy() || selected !== 'custom' || !design) { render(); return; }
+    design = normalized({...design, ...rows}); changed(message);
+  });
+  ThemeLibrary.init({host: $('newsletter-theme-library'), saveHost: $('newsletter-theme-save-panel'),
+    signature: value => JSON.stringify(futureDesign(normalized(value, 'custom'))),
+    onStateChange: () => render(),
+    onSelect: theme => {
+      if (busy()) return;
+      const previous = normalized(design || defaults[selected]);
+      selected = 'custom';
+      design = normalized({...theme.design, lead_id: previous.lead_id, story_order: previous.story_order, column_map: previous.column_map});
+      changed('“' + theme.name + '” selected.');
+    },
+  });
   $('newsletter-preview').addEventListener('click', preview); $('newsletter-save').addEventListener('click', save);
   return {init, setIssue, reset, blocksPublish};
 })();

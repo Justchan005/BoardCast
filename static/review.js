@@ -23,19 +23,28 @@
     if (me.role === 'student_affairs') await loadIssue();
     else $('issue-card').hidden = true;
   }
-  function renderList() {
+  function renderList(resetScroll = false) {
     const search = $('search').value.toLowerCase();
     const shown = items.filter(i => i.status === status && [i.data.title, i.club_id, i.submitted_by, i.data.organiser].join(' ').toLowerCase().includes(search));
     if (!shown.some(i => i.id === selected)) selected = shown[0]?.id || null;
     const list = $('list'); list.replaceChildren();
     for (const item of shown) {
-      const button = el('button', {type:'button',class:'queue-item' + (item.id === selected ? ' selected' : ''), 'aria-pressed':String(item.id === selected), onclick:() => {selected = item.id; renderList();}},
+      const button = el('button', {type:'button',class:'queue-item' + (item.id === selected ? ' selected' : ''), 'aria-pressed':String(item.id === selected), onclick:() => {
+        selected = item.id;
+        // Keep the focused card and scroll position while loading another submission.
+        for (const card of list.querySelectorAll('.queue-item')) {
+          card.classList.toggle('selected', card === button);
+          card.setAttribute('aria-pressed', String(card === button));
+        }
+        showDetail(selected);
+      }},
         el('span',{class:'queue-kind'},item.type), el('strong',{},item.data.title || 'Untitled submission'),
         el('span',{class:'muted'},item.data.organiser || item.data.team || item.club_id || 'Campus office'),
         el('span',{class:'pill ' + item.status},item.issues?.length ? item.issues.length + ' checks to resolve' : item.status));
       list.append(button);
     }
     if (!shown.length) list.append(el('div',{class:'empty-state muted'},'No submissions in this view.'));
+    if (resetScroll) list.scrollTop = 0;
     if (selected) showDetail(selected);
     else { selectionRequest++; $('detail').replaceChildren(el('div',{class:'empty-state'},el('h2',{},'All clear'),el('p',{class:'muted'},'Choose another status or wait for the next club submission.'))); }
   }
@@ -114,9 +123,9 @@
   $('build-preview')?.addEventListener('click',()=>action($('build-preview'),async()=>{await api('/admin/api/demo/preview',{method:'POST'});notice('Local preview built from approved submissions.');await loadIssue();}));
   $('publish-local')?.addEventListener('click',()=>action($('publish-local'),async()=>{const result=await api('/admin/api/demo/publish',{method:'POST'});notice(result.sent ? result.sent+' email(s) saved to the local outbox.' : (result.reason || 'No new email was delivered.'),result.failed?.length?'warn':'ok');await load();}));
   $('refresh').onclick=()=>action($('refresh'),load);
-  $('search').oninput=renderList;
+  $('search').oninput=()=>renderList(true);
   const tabs=[...document.querySelectorAll('[role=tab]')];
-  function selectTab(button) {status=button.dataset.status; selected=null; for(const b of tabs){b.setAttribute('aria-selected',String(b===button));b.tabIndex=b===button?0:-1;} $('list').setAttribute('aria-labelledby',button.id);renderList();}
+  function selectTab(button) {status=button.dataset.status; selected=null; for(const b of tabs){b.setAttribute('aria-selected',String(b===button));b.tabIndex=b===button?0:-1;} $('list').setAttribute('aria-labelledby',button.id);renderList(true);}
   tabs.forEach((button,index)=>{button.onclick=()=>selectTab(button);button.onkeydown=ev=>{let next;if(ev.key==='ArrowRight')next=(index+1)%tabs.length;if(ev.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;if(ev.key==='Home')next=0;if(ev.key==='End')next=tabs.length-1;if(next!=null){ev.preventDefault();tabs[next].focus();selectTab(tabs[next]);}};});
   window.addEventListener('boardcast:signout',()=>{selectionRequest++;items=[];selected=null;issue=null;Newsletter.reset();});
   Staff.init(async who=>{me=who;$('app').hidden=false;try{await load();if(me.role==='student_affairs')await Newsletter.init({onStateChange:updatePublishDisabled,onSaved:loadIssue});else Newsletter.reset();}catch(e){if(!e.stale)notice(e.message,'bad');}});
