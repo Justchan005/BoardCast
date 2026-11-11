@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}Insights · BoardCast{% endblock %}
+{% block head %}
+{% if client_id %}<script src="https://accounts.google.com/gsi/client" async defer></script>{% endif %}
+<link rel="stylesheet" href="/static/agent.css?v=20261113-1">
+<script src="/static/staff.js?v=20261113-2" defer></script><script src="/static/insights.js?v=20261113-1" defer></script>
+{% endblock %}
+{% block topbar_right %}<div class="row"><span id="who" class="muted">Staff sign-in</span><button id="signout" class="text-button" type="button" hidden>Switch account</button></div>{% endblock %}
+{% block content %}
+<main class="wrap review-wrap">
+{% with default_email='studentaffairs.demo@apu.edu.my' %}{% include '_staff_signin.html' %}{% endwith %}
+<section id="app" hidden>
+  <header class="page-heading"><div><h1>What the workflow did, and what it cost</h1><p id="insights-sub" class="muted">Every number on this page is counted in code from saved records. None is written by a model.</p></div>
+  <nav class="row" aria-label="Staff pages"><a class="btn secondary" href="/admin">Review desk</a><a class="btn secondary" href="/admin/club">Report</a><button id="refresh" class="btn secondary" type="button">Refresh</button></nav></header>
+  <p id="notice" class="alert" role="status" hidden></p>
+  <div id="content" hidden>
+    <h2 class="insight-heading">Submissions</h2>
+    <section id="pipeline" class="trace-totals" aria-label="Submissions by status"></section>
+    <h2 class="insight-heading">Human review</h2>
+    <section id="review" class="trace-totals" aria-label="Human review"></section>
+    <section class="card insight-card"><h3>Reviewer decisions next to the AI brief</h3>
+      <p class="muted">Counted only for decisions made while a current brief existed. The brief is advice; these rows show how often the person agreed with it.</p>
+      <table class="clicks insight-table"><thead><tr><th>What the brief said</th><th>What the reviewer did</th><th class="num">Decisions</th></tr></thead><tbody id="outcomes"></tbody></table></section>
+    <h2 class="insight-heading">Pre-review agent</h2>
+    <section id="agent" class="trace-totals" aria-label="Pre-review agent"></section>
+    <section class="card insight-card"><h3>Which check raised a flag</h3>
+      <table class="clicks insight-table"><thead><tr><th>Check the agent can choose</th><th class="num">Submissions flagged</th></tr></thead><tbody id="checks"></tbody></table></section>
+    <h2 class="insight-heading">Gemini usage and cost</h2>
+    <section id="ai" class="trace-totals" aria-label="Model usage"></section>
+    <section class="card insight-card"><h3>By task</h3>
+      <div class="table-scroll"><table class="clicks insight-table"><thead><tr><th>Task</th><th>Prompt</th><th class="num">Calls</th><th class="num">Failed</th><th class="num">Tokens in</th><th class="num">Tokens out</th><th class="num">Average time</th><th class="num">Estimated cost</th></tr></thead><tbody id="purposes"></tbody></table></div>
+      <p id="price-note" class="muted"></p></section>
+    <h2 class="insight-heading">Reach</h2>
+    <section id="reach" class="trace-totals" aria-label="Reach"></section>
+    <h2 class="insight-heading">Time saved: your assumptions, our counts</h2>
+    <section class="card insight-card">
+      <p class="muted">BoardCast cannot measure how long clubs spend promoting an event by hand. Enter figures from your own survey or interviews. The starting values are placeholders, not findings.</p>
+      <form id="calc" class="calc-grid" autocomplete="off">
+        <div><label for="calc-channels">Channels a club posts to per event today</label><input id="calc-channels" type="number" min="0" max="50" step="1" value="3" inputmode="numeric"></div>
+        <div><label for="calc-minutes">Minutes per channel</label><input id="calc-minutes" type="number" min="0" max="600" step="1" value="10" inputmode="numeric"></div>
+        <div><label for="calc-submit">Minutes to submit once in BoardCast</label><input id="calc-submit" type="number" min="0" max="600" step="1" value="3" inputmode="numeric"></div>
+      </form>
+      <p id="calc-result" class="calc-result" role="status" aria-live="polite"></p>
+      <p class="muted" id="calc-formula"></p>
+    </section>
+  </div>
+</section>
+</main>
+{% endblock %}

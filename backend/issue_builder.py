@@ -29,11 +29,15 @@ env = Environment(loader=FileSystemLoader(TEMPLATES), autoescape=select_autoesca
 NEWSLETTER_TEMPLATES = (
     {"id": "classic", "label": "Classic", "description": "A clean, familiar campus digest."},
     {"id": "newspaper", "label": "Newspaper", "description": "An editorial newspaper layout for Campus Weekly."},
+    {"id": "spotlight", "label": "Spotlight", "description": "A prominent lead poster followed by visual stories."},
+    {"id": "bulletin", "label": "Bulletin", "description": "Compact poster-and-story rows for a quick campus catch-up."},
     {"id": "custom", "label": "Custom", "description": "Arrange reusable title, picture and story placeholders."},
 )
 _NEWSLETTER_FILES = {
     "classic": {"email": "weekly_email.html", "web": "magazine.html"},
     "newspaper": {"email": "weekly_email_newspaper.html", "web": "magazine_newspaper.html"},
+    "spotlight": {"email": "weekly_email_variant.html", "web": "magazine_variant.html"},
+    "bulletin": {"email": "weekly_email_variant.html", "web": "magazine_variant.html"},
     "custom": {"email": "weekly_email_theme.html", "web": "magazine_theme.html"},
 }
 
@@ -114,6 +118,28 @@ def newsletter_template(value=None) -> str:
     return value if isinstance(value, str) and value in _NEWSLETTER_FILES else "classic"
 
 
+def variant_style(design: dict) -> dict:
+    """Derive publication surfaces and readable text for any allowed accent."""
+    def rgb(value):
+        return tuple(int(value[index:index + 2], 16) for index in (1, 3, 5))
+
+    def blend(foreground, background, weight):
+        return "#" + "".join(f"{round(a * weight + b * (1 - weight)):02X}"
+                             for a, b in zip(rgb(foreground), rgb(background)))
+
+    def linear(channel):
+        value = channel / 255
+        return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+
+    accent = design["accent_color"]
+    luminance = sum(weight * linear(channel) for weight, channel in
+                    zip((0.2126, 0.7152, 0.0722), rgb(accent)))
+    return {"accent_ink": "#000000" if (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) else "#FFFFFF",
+            "surface": blend(accent, design["paper_color"], 0.07),
+            "line": blend(design["text_color"], design["paper_color"], 0.18),
+            "muted": blend(design["text_color"], design["paper_color"], 0.76)}
+
+
 def default_newsletter_design(template="classic") -> dict:
     values = {"headline_font": "arial", "body_font": "arial", "paper_color": "#FFFFFF",
               "text_color": "#1B1B1B", "accent_color": "#0B7BB5", "columns": 1,
@@ -122,6 +148,10 @@ def default_newsletter_design(template="classic") -> dict:
     if newsletter_template(template) == "newspaper":
         values.update(headline_font="georgia", body_font="georgia", paper_color="#F7F3E8",
                       text_color="#23231F", accent_color="#9D3229", columns=2)
+    if newsletter_template(template) in ("spotlight", "bulletin"):
+        values.update(accent_color="#1F4FD8", columns=2 if template == "spotlight" else 1)
+        if template == "spotlight":
+            values.update(headline_font="georgia")
     if newsletter_template(template) == "custom":
         values.update(header_rows=[{"cells": [["name"]]}, {"cells": [["date", "intro"]]}],
                       story_rows=[{"cells": [["picture"], ["title", "details"]]}])
@@ -331,11 +361,25 @@ def _context(issue: dict, plan: EditorPlan) -> dict:
             n += 1
             sections.append({"key": key, "title": f"{n}. {title.upper()}", "emoji": emoji})
     free = sum(1 for e in issue["events"] if _is_free(e["data"].get("fee")))
+    variant = newsletter_template(issue.get("newsletter_template"))
+    variant_design = design or default_newsletter_design(variant)
+    variant_columns = custom_columns if design else [newspaper_stories[index::variant_design["columns"]]
+                                                     for index in range(variant_design["columns"])]
+    variant_email_columns = [list(column) for column in variant_columns[:2]]
+    if len(variant_columns) == 3:
+        variant_email_columns[1].extend(variant_columns[2])
+    variant_lead = custom_lead if design else newspaper_lead
     return {
         "issue": issue, "plan": plan, "spotlight": spotlight, "events": events, "sections": sections,
         "newspaper_lead": newspaper_lead, "newspaper_stories": newspaper_stories,
         "design": design, "design_fonts": design_fonts, "custom_lead": custom_lead,
         "custom_columns": custom_columns, "custom_email_columns": custom_email_columns,
+        "variant": variant, "variant_design": variant_design, "variant_style": variant_style(variant_design),
+        "variant_fonts": {key: _FONT_STACKS[variant_design[f"{key}_font"]] for key in ("headline", "body")},
+        "variant_lead": variant_lead, "variant_columns": variant_columns,
+        "variant_email_columns": variant_email_columns,
+        "variant_stories": ([variant_lead] if variant_lead else []) +
+                           [item for column in variant_columns for item in column],
         "publication_accent": design["accent_color"] if design else "#0B7BB5",
         "base": config.PUBLIC_BASE_URL,
         "stats": {"events": len(issue["events"]), "free": free,
@@ -363,7 +407,8 @@ def render_email(issue: dict, plan: EditorPlan, subscriber: dict | None,
     save_q = f"?s={tokens.sign(subscriber['email'], 'save')}" if subscriber and subscriber.get("email") else ""
     ctx.update(unsubscribe_url=unsubscribe_url, issue_id=issue_id, prefs_url=prefs_url, save_q=save_q)
     template = newsletter_template(issue.get("newsletter_template"))
-    filename = ("weekly_email_theme.html" if template == "custom" else "weekly_email_custom.html"
+    filename = (_NEWSLETTER_FILES[template]["email"] if template in ("spotlight", "bulletin") else
+                "weekly_email_theme.html" if template == "custom" else "weekly_email_custom.html"
                 if ctx["design"] is not None else _NEWSLETTER_FILES[template]["email"])
     return env.get_template(filename).render(**ctx)
 
@@ -372,7 +417,8 @@ def render_magazine(issue: dict, plan: EditorPlan, issue_id: str) -> str:
     ctx = _context(issue, plan)
     ctx["issue_id"] = issue_id
     template = newsletter_template(issue.get("newsletter_template"))
-    filename = ("magazine_theme.html" if template == "custom" else "magazine_custom.html"
+    filename = (_NEWSLETTER_FILES[template]["web"] if template in ("spotlight", "bulletin") else
+                "magazine_theme.html" if template == "custom" else "magazine_custom.html"
                 if ctx["design"] is not None else _NEWSLETTER_FILES[template]["web"])
     return env.get_template(filename).render(**ctx)
 
@@ -388,7 +434,9 @@ def build_preview(monday: date) -> tuple[str, dict]:
             raise HTTPException(409, "This week's edition has started delivery. Resolve its delivery status before rebuilding it.")
     issue = collect(monday)
     items = all_items(issue)
-    plan, report = editor.plan_issue(items)
+    from . import trace
+    with trace.capture() as model_calls:
+        plan, report = editor.plan_issue(items)
     # Re-running the preview replaces the older one for that week, so Monday sends the newest.
     older = (store.db().collection("issues").where("status", "==", "preview")
              .where("week_start", "==", monday.isoformat()).stream())
@@ -405,4 +453,6 @@ def build_preview(monday: date) -> tuple[str, dict]:
         "newsletter_template": settings["template"],
         "newsletter_design": newsletter_design(settings["design"], settings["template"]),
     })
+    # The spotlight choice belongs to the edition and to the event that was chosen.
+    trace.flush(model_calls, issue_id=issue_id, item_id=plan.spotlight_item_id, actor="gemini")
     return issue_id, report

@@ -26,13 +26,15 @@ from shared.schemas import ItemStatus, ItemType, Role
 
 from pathlib import Path
 
-from . import audit, auth, checks, config, delivery, extract, issue_builder, mailer, reminders, reviews, store, tokens, web, submission
+from . import audit, auth, checks, config, delivery, extract, insights, issue_builder, mailer, prereview, reminders, reviews, runlog, store, tokens, trace, web, submission
 from .ics import build_ics
 from .qr_rules import apply_qr_links
 
 app = FastAPI(title="BoardCast API")
 app.include_router(web.router)
 app.include_router(submission.router)
+app.include_router(runlog.router)
+app.include_router(insights.router)
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent.parent / "static"), name="static")
 _publisher = None
 
@@ -70,6 +72,7 @@ class DecisionReq(BaseModel):
     user_email: str
     decision: Literal["approve", "reject"]
     note: Optional[str] = None
+    acknowledge_flags: bool = False       # the reviewer confirmed the AI brief's red flags in chat
 
 
 # ---------------------------------------------------------------- protected: agent
@@ -132,21 +135,39 @@ def _poster_choice(wanted: bool, uri: str | None, data: dict) -> tuple[bool, lis
     return bool(wanted and uri and not conflicts), conflicts
 
 
+NOT_A_POSTER = ("This image doesn't look like a campus poster, so nothing was filled in. "
+                "Upload the poster image, or enter the details manually.")
+
+
 @app.post("/items/extract")
 def extract_item(req: ExtractReq, _=Depends(auth.agent_caller)):
     auth.require_role(req.user_email, Role.CLUB_REP, Role.STUDENT_AFFAIRS)
     image, mime_type = _load_poster(req.gcs_uri)
-    try:
-        result = extract.extract(req.type, image=image, mime_type=mime_type)
-    except ValueError as e:
-        raise HTTPException(422, str(e))
+    keys = {"poster_uri": req.gcs_uri}
+    with trace.capture() as model_calls:
+        try:
+            result = extract.extract(req.type, image=image, mime_type=mime_type)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        finally:   # the Gemini call is traced whether it succeeded, failed validation or timed out
+            trace.flush(model_calls, actor="gemini", **keys)
     data = result.model_dump(mode="json")
+    if str(data.get("title") or "").strip().upper() == "UNREADABLE":   # prompts/extract.md: not a poster
+        trace.record("code", "not_a_poster", "The model reported that the image is not a poster; nothing was filled in",
+                     ok=False, actor="code", detail={"requested_by": req.user_email.lower()}, **keys)
+        raise HTTPException(422, NOT_A_POSTER)
     from . import qr  # needs the zbar system library; imported here so the rest runs without it
     links = qr.decode_links(image)
     apply_qr_links(req.type.value, data, links)  # QR beats model guess (backend/qr_rules.py)
     _remember_poster_facts(req.gcs_uri, data)
-    return {"data": data, "qr_links": links,
-            "missing": checks.missing_fields(req.type.value, data)}
+    missing = checks.missing_fields(req.type.value, data)
+    trace.record("code", "qr_decode", f"{len(links)} QR link{'' if len(links) == 1 else 's'} decoded in code; the model never reads QR codes",
+                 actor="code", detail={"links": links}, **keys)
+    trace.record("code", "required_fields",
+                 "Every required field was found on the poster" if not missing
+                 else "The club is asked to fill in: " + ", ".join(missing),
+                 actor="code", detail={"missing": missing, "requested_by": req.user_email.lower()}, **keys)
+    return {"data": data, "qr_links": links, "missing": missing}
 
 
 @app.post("/items")
@@ -173,9 +194,31 @@ def submit_item(req: SubmitReq, _=Depends(auth.agent_caller)):
         "poster_wanted": bool(req.show_poster), "show_poster": show_poster,
     })
     audit.log(req.user_email, "submit", item_id, {"status": status.value, "issues": issues})
+    _trace_submission("submitted", item_id, req.user_email, status, issues, poster_off, bool(req.poster_uri),
+                      fast_lane=fast_lane)
     if status == ItemStatus.PENDING:
         publish(config.PUBSUB_TOPIC_SUBMITTED, {"item_id": item_id})
+        prereview.schedule(item_id, actor=req.user_email)
     return {"id": item_id, "status": status.value, "issues": issues, **_poster_note(poster_off)}
+
+
+def _trace_submission(action: str, item_id: str, email: str, status: ItemStatus, issues: list[str],
+                      poster_off: list[str], has_poster: bool, *, fast_lane: bool = False) -> None:
+    trace.record("human", action, "The club confirmed the details and sent them for review" if action == "submitted"
+                 else "The details were corrected and sent again", item_id=item_id, actor=email,
+                 detail={"has_poster": has_poster})
+    if status == ItemStatus.PENDING:
+        outcome = "No problems found; queued for Student Affairs"
+    elif status == ItemStatus.APPROVED:
+        outcome = "Achievement from Student Affairs, already approved through APU's own process: fast lane"
+    else:
+        outcome = f"{len(issues)} problem(s) found; kept as a draft for the club to fix"
+    trace.record("code", "submission_checks", outcome, item_id=item_id, actor="code", ok=not issues,
+                 detail={"status": status.value, "problems": issues, "poster_hidden_because_it_differs_in": poster_off,
+                         "fast_lane": fast_lane,
+                         "checks": ["required fields", "date not in the past", "https and allowed link domains",
+                                    "description adds no new numbers", "consent for achievements",
+                                    "poster agrees with the confirmed details"]})
 
 
 def _poster_note(conflicts: list[str]) -> dict:
@@ -211,6 +254,9 @@ def edit_item(item_id: str, req: SubmitReq, _=Depends(auth.agent_caller)):
                       poster_uri=poster_uri, poster_wanted=wanted, show_poster=show_poster, approved_by=None,
                       **reviews.REJECTION_FIELDS)
     audit.log(req.user_email, "edit", item_id, {"issues": issues})
+    _trace_submission("corrected", item_id, req.user_email, status, issues, poster_off, bool(poster_uri))
+    if status == ItemStatus.PENDING:
+        prereview.schedule(item_id, actor=req.user_email)
     return {"id": item_id, "status": status.value, "issues": issues, **_poster_note(poster_off)}
 
 
@@ -225,7 +271,8 @@ def list_queue(user_email: str, status: str = "pending", _=Depends(auth.agent_ca
 
 @app.post("/items/{item_id}/decision")
 def decide(item_id: str, req: DecisionReq, _=Depends(auth.agent_caller)):
-    return reviews.decide_item(item_id, req.decision, req.note, req.user_email, via="agent")
+    return reviews.decide_item(item_id, req.decision, req.note, req.user_email, via="agent",
+                               acknowledge_flags=req.acknowledge_flags)
 
 
 # ---------------------------------------------------------------- protected: scheduler

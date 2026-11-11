@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block title %}{{ plan.subject_line }}{% endblock %}
+{% block body_class %}publication-variant{% endblock %}
+{% block web_fonts %}{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/newsletter-variants.css?v=20261111-visual2">{% endblock %}
+{% block topbar_right %}<a href="/subscribe">Subscribe to Campus Weekly</a>{% endblock %}
+{% block content %}
+{% macro story(item, lead=False) -%}
+<article class="pv-story{% if lead %} pv-lead{% endif %}{% if item.show_poster and item.poster_uri %} pv-illustrated{% endif %}" data-story-id="{{ item.id }}" aria-labelledby="story-{{ item.id }}">
+  {% if variant == 'bulletin' %}<div class="pv-stamp">{% if item.type == 'event' and item.data.date %}<strong>{{ item.data.date|nice_date }}</strong>{% endif %}<span>{{ 'Event' if item.type == 'event' else 'Campus win' if item.type == 'achievement' else 'Opportunity' }}</span></div>{% endif %}
+  <div class="pv-story-main">
+  {% if item.show_poster and item.poster_uri %}
+  <figure class="pv-artwork">
+  <a class="pv-poster" href="/p/{{ item.id }}.jpg" target="_blank" rel="noopener" aria-label="Open full poster: {{ item.data.title or item.data.team }}">
+    <img src="/p/{{ item.id }}.jpg" alt="Poster: {{ item.data.title or item.data.team }}"{% if not lead %} loading="lazy"{% endif %}>
+  </a>
+  <figcaption>Original poster · <a href="/p/{{ item.id }}.jpg" target="_blank" rel="noopener">View full size</a></figcaption>
+  </figure>
+  {% endif %}
+  <div class="pv-copy">
+    <h2 id="story-{{ item.id }}">{{ item.data.title or item.data.team }}</h2>
+    {% if variant == 'spotlight' %}<p class="pv-kind">{{ 'Campus event' if item.type == 'event' else 'Campus win' if item.type == 'achievement' else 'Opportunity' }}</p>{% endif %}
+    {% with base='', save_q='' %}{% include '_publication_variant_copy.html' %}{% endwith %}
+  </div>
+  </div>
+</article>
+{%- endmacro %}
+<main class="pv-paper pv-{{ variant }}" data-newsletter-template="{{ variant }}" style="--pv-paper:{{ variant_design.paper_color }};--pv-ink:{{ variant_design.text_color }};--pv-accent:{{ variant_design.accent_color }};--pv-accent-ink:{{ variant_style.accent_ink }};--pv-surface:{{ variant_style.surface }};--pv-line:{{ variant_style.line }};--pv-muted:{{ variant_style.muted }};--pv-headline:{{ variant_fonts.headline }};--pv-body:{{ variant_fonts.body }};--pv-columns:{{ variant_design.columns }};--pv-tablet-columns:{{ [variant_design.columns, 2]|min }}">
+  <header class="pv-masthead">
+    <h1>Campus Weekly</h1>
+    <div class="pv-edition"><time datetime="{{ issue.week_start.isoformat() }}">{{ issue.week_start.strftime('%d %B %Y') }}</time><span>Clubs, campus life &amp; opportunities</span></div>
+    {% if plan.teaser and variant_stories|length > 1 %}<p>{{ plan.teaser }}</p>{% endif %}
+  </header>
+  {% if not variant_stories %}
+  <section class="pv-empty"><h2>Until the next edition</h2><p>There are no new submissions in this edition.</p><a href="/subscribe">Subscribe for the next Campus Weekly</a></section>
+  {% elif variant == 'spotlight' %}
+    {{ story(variant_lead, True) }}
+    {% if variant_stories|length > 1 %}
+    <section class="pv-more" aria-labelledby="pv-more-heading"><div class="pv-section-title"><h2 id="pv-more-heading">More from campus</h2><span>{{ variant_stories|length - 1 }} {{ 'story' if variant_stories|length == 2 else 'stories' }}</span></div>
+      <div class="pv-columns">{% for column in variant_columns %}<div class="pv-column">{% for item in column %}{{ story(item) }}{% endfor %}</div>{% endfor %}</div>
+    </section>
+    {% endif %}
+  {% else %}
+  <section class="pv-bulletin-list" aria-label="Campus stories">{% for item in variant_stories %}{{ story(item) }}{% endfor %}</section>
+  {% endif %}
+  <footer class="pv-footer"><p>Submitted by APU clubs and offices. Approved by Student Affairs.</p><p>All dates and times are in Malaysia time. BoardCast never asks for your password.</p><a href="/subscribe">Get Campus Weekly every Monday</a></footer>
+</main>
+{% endblock %}

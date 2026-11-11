@@ -13,7 +13,7 @@ from datetime import timedelta
 
 from googleapiclient.errors import HttpError
 
-from . import audit, config, issue_builder, mailer, store, tokens
+from . import audit, config, issue_builder, mailer, store, tokens, trace
 
 LEASE = timedelta(minutes=10)
 RETRYABLE_ISSUES = ("preview", "partial", "sending")
@@ -163,7 +163,11 @@ def _finish(issue: dict, owner: str) -> dict:
     result = changed[issue_key] if changed else store.get_issue(issue["id"])
     if (result.get("delivery_summary") or {}).get("sent"):
         for item in issue["delivery_snapshot"]["items"]:
-            store.publish_if_unchanged(item)
+            if store.publish_if_unchanged(item):
+                trace.record("system", "published", "Went out in Campus Weekly (email and web edition)",
+                             item_id=item["id"], issue_id=issue["id"], actor="scheduler",
+                             detail={"recipients_sent": result["delivery_summary"]["sent"],
+                                     "edition": issue.get("week_start")})
     return result
 
 

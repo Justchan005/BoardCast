@@ -187,12 +187,32 @@ const ThemeEditor = (() => {
     cleanDrag(); container.replaceChildren(); dragNodes = []; focusTargets = new Map();
     const editor = element('div', 'theme-editor');
     const heading = element('div', 'theme-editor-heading');
-    heading.append(element('p', 'eyebrow', 'CUSTOM THEME'), element('h3', '', 'Build your own layout'), element('p', '', 'Move the placeholders to decide where the title, picture and details appear. Your theme is reused in every edition.'));
+    heading.append(element('h3', '', 'Build your own layout'), element('p', '', 'Move the placeholders to decide where the title, picture and details appear. Your theme is reused in every edition.'));
     editor.append(heading);
     const tabs = element('div', 'theme-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Theme sections');
-    for (const [id, label] of [['header', 'Newsletter header'], ['story', 'Story layout']]) {
-      const tab = button(label, null, () => { if (disabled || section === id) return; section = id; render(); focusTargets.get('tab:' + id)?.focus(); });
-      tab.setAttribute('role', 'tab'); tab.setAttribute('aria-selected', String(section === id)); tab.className = section === id ? 'is-active' : '';
+    const sections = [['header', 'Newsletter header'], ['story', 'Story layout']];
+    const activate = id => {
+      if (disabled || section === id) return;
+      section = id; render(); focusTargets.get('tab:' + id)?.focus();
+    };
+    for (const [index, [id, label]] of sections.entries()) {
+      const tab = button(label, null, () => activate(id));
+      tab.id = 'theme-tab-' + id;
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', String(section === id));
+      tab.setAttribute('aria-controls', 'theme-section-panel');
+      tab.tabIndex = section === id ? 0 : -1;
+      tab.className = section === id ? 'is-active' : '';
+      tab.addEventListener('keydown', event => {
+        if (disabled) return;
+        let target;
+        if (event.key === 'ArrowRight') target = (index + 1) % sections.length;
+        else if (event.key === 'ArrowLeft') target = (index + sections.length - 1) % sections.length;
+        else if (event.key === 'Home') target = 0;
+        else if (event.key === 'End') target = sections.length - 1;
+        else return;
+        event.preventDefault(); activate(sections[target][0]);
+      });
       focusTargets.set('tab:' + id, tab); tabs.append(tab);
     }
     editor.append(tabs);
@@ -201,7 +221,7 @@ const ThemeEditor = (() => {
       if (disabled || rows().length >= 6) return;
       rows().push({cells: [[]]}); changed('Theme row added.');
     }, disabled || rows().length >= 6)); editor.append(toolbar);
-    const canvas = element('div', 'theme-canvas'); canvas.setAttribute('role', 'tabpanel'); canvas.setAttribute('aria-label', section === 'header' ? 'Newsletter header placeholders' : 'Story layout placeholders');
+    const canvas = element('div', 'theme-canvas'); canvas.id = 'theme-section-panel'; canvas.setAttribute('role', 'tabpanel'); canvas.setAttribute('aria-labelledby', 'theme-tab-' + section);
     const safeColor = (value, fallback) => /^#[\da-f]{6}$/i.test(value || '') ? value : fallback;
     canvas.style.backgroundColor = safeColor(settings.paper_color, '#FFFFFF'); canvas.style.color = safeColor(settings.text_color, '#1B1B1B');
     canvas.style.borderColor = safeColor(settings.accent_color, '#0B7BB5');

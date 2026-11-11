@@ -197,7 +197,8 @@ def list_pending(tool_context: ToolContext, status: str = "pending") -> dict:
     return _call("GET", "/items", params={"user_email": _user_email(tool_context), "status": status})
 
 
-def decide_item(item_id: str, decision: str, tool_context: ToolContext, note: str = "") -> dict:
+def decide_item(item_id: str, decision: str, tool_context: ToolContext, note: str = "",
+                acknowledge_flags: bool = False) -> dict:
     """Approves or rejects a pending item. Student Affairs only; others are refused.
 
     Args:
@@ -205,9 +206,13 @@ def decide_item(item_id: str, decision: str, tool_context: ToolContext, note: st
         decision: "approve" or "reject".
         note: Required reason for a rejection, emailed to the uploader and shown in the club report.
             Optional for approval. Ask the reviewer for a reason instead of inventing one.
+        acknowledge_flags: Set true only after an approval was refused because the AI pre-review
+            raised points to check, you read those points to the reviewer, and the reviewer
+            answered that they have checked them. Never set it on the first attempt.
     """
     return _call("POST", f"/items/{item_id}/decision", json={
-        "user_email": _user_email(tool_context), "decision": decision, "note": note or None})
+        "user_email": _user_email(tool_context), "decision": decision, "note": note or None,
+        "acknowledge_flags": bool(acknowledge_flags)})
 
 
 def hold_issue(issue_id: str, tool_context: ToolContext) -> dict:

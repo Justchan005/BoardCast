@@ -6,6 +6,7 @@ If selection fails, the earliest event becomes the spotlight.
 from __future__ import annotations
 
 import json
+import time
 
 from google.genai import types
 from pydantic import BaseModel, Field
@@ -13,9 +14,13 @@ from pydantic import BaseModel, Field
 from shared import prompts
 from shared.schemas import EditorPlan
 
-from . import audit, config
+from . import audit, config, extract, trace
 from .checks import _as_date
-from .extract import client
+
+
+def client():
+    """The shared Gemini client, looked up at call time (never a copy taken at import)."""
+    return extract.client()
 
 HEADLINE_MAX, TEASER_MAX_WORDS, SUBJECT_MAX = 90, 35, 60
 
@@ -82,7 +87,10 @@ def plan_issue(items: list[dict]) -> tuple[EditorPlan, dict]:
     if not items:
         return fallback_plan(items), {"source": "empty"}
     prompt = prompts.load("editor")
+    source = f"{prompt.name}@{prompt.version}"
     payload = [{"id": i["id"], "type": i["type"], "data": i["data"]} for i in items]
+    started = time.perf_counter()
+    resp = None
     try:
         resp = client().models.generate_content(
             model=config.GEMINI_MODEL,
@@ -92,10 +100,21 @@ def plan_issue(items: list[dict]) -> tuple[EditorPlan, dict]:
         )
         choice = resp.parsed if isinstance(resp.parsed, SpotlightChoice) else SpotlightChoice.model_validate_json(resp.text)
     except Exception as e:
+        trace.note_model_call(purpose="choose_spotlight", prompt=source, model=config.GEMINI_MODEL, started=started,
+                              resp=resp, error=e, summary="Spotlight choice failed; code used the earliest event",
+                              detail={"fallback": "earliest event by date"})
         audit.log("gemini", "editor_failed", None, {"error": str(e)})
         return fallback_plan(items), {"source": "fallback", "error": str(e)}
     plan, replaced = validate(EditorPlan(spotlight_item_id=choice.spotlight_item_id), items)
-    report = {"source": f"{prompt.name}@{prompt.version}", "copy_source": "approved_fields",
+    report = {"source": source, "copy_source": "approved_fields",
               "replaced": [field for field in replaced if field == "spotlight_item_id"]}
+    trace.note_model_call(
+        purpose="choose_spotlight", prompt=source, model=config.GEMINI_MODEL, started=started, resp=resp,
+        summary=("Chose the spotlight event; code rendered every published word from approved fields"
+                 if not report["replaced"] else
+                 "Chose an id that is not an approved event; code replaced it with the earliest event"),
+        detail={"model_choice": choice.spotlight_item_id, "used": plan.spotlight_item_id,
+                "candidates": len([i for i in items if i["type"] == "event"]),
+                "output_check": "id must be an approved event in the input"})
     audit.log("gemini", "editor_plan", None, report)
     return plan, report

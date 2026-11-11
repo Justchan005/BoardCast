@@ -148,12 +148,14 @@ class Decision(BaseModel):
     note: Optional[str] = None
     retry_notification: bool = False
     expected_updated_at: str | None = None
+    acknowledge_flags: bool = False     # the reviewer confirms they checked the AI brief's red flags
 
 
 @router.post("/admin/api/items/{item_id}/decision")
 def decide(item_id: str, body: Decision, email: str = Depends(auth.web_user)):
     return reviews.decide_item(item_id, body.decision, body.note, email, via="web",
-                               retry_notification=body.retry_notification, expected_updated_at=body.expected_updated_at)
+                               retry_notification=body.retry_notification, expected_updated_at=body.expected_updated_at,
+                               acknowledge_flags=body.acknowledge_flags)
 
 
 @router.get("/admin/api/preview")
@@ -176,7 +178,7 @@ def latest_preview(email: str = Depends(auth.web_user)):
 
 
 class NewsletterTemplateChoice(BaseModel):
-    template: Literal["classic", "newspaper", "custom"]
+    template: Literal["classic", "newspaper", "spotlight", "bulletin", "custom"]
     issue_id: str | None = Field(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     design: issue_builder.NewsletterDesign | None = None
 

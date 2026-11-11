@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Run trace · BoardCast{% endblock %}
+{% block head %}
+{% if client_id %}<script src="https://accounts.google.com/gsi/client" async defer></script>{% endif %}
+<link rel="stylesheet" href="/static/agent.css?v=20261113-1">
+<script src="/static/staff.js?v=20261113-2" defer></script><script src="/static/brief.js?v=20261113-1" defer></script><script src="/static/trace.js?v=20261113-1" defer></script>
+{% endblock %}
+{% block topbar_right %}<div class="row"><span id="who" class="muted">Staff sign-in</span><button id="signout" class="text-button" type="button" hidden>Switch account</button></div>{% endblock %}
+{% block content %}
+<main class="wrap review-wrap" data-item-id="{{ item_id }}">
+{% with default_email='studentaffairs.demo@apu.edu.my' %}{% include '_staff_signin.html' %}{% endwith %}
+<section id="app" hidden>
+  <header class="page-heading"><div><h1 id="trace-title">Run trace</h1><p id="trace-sub" class="muted">Every model choice, tool call, code check and human decision, in order.</p></div>
+  <nav class="row" aria-label="Trace actions"><a class="btn secondary" href="/admin">Review desk</a><button id="export" class="btn secondary" type="button">Download run log (.md)</button><button id="refresh" class="btn secondary" type="button">Refresh</button></nav></header>
+  <p id="notice" class="alert" role="status" hidden></p>
+  <section id="totals" class="trace-totals" aria-label="Run totals"></section>
+  <section id="brief" aria-label="AI pre-review brief"></section>
+  <section class="card trace-card">
+    <div class="trace-card-heading"><h2>What happened, step by step</h2>
+      <ul class="trace-legend" aria-label="Who did each step">
+        <li><span class="kind kind-model">Model</span> Gemini decided or read</li>
+        <li><span class="kind kind-tool">Tool</span> a check the model chose</li>
+        <li><span class="kind kind-code">Code</span> fixed rule, same every time</li>
+        <li><span class="kind kind-human">Human</span> a signed-in person</li>
+        <li><span class="kind kind-system">System</span> background action</li>
+      </ul></div>
+    <ol id="steps" class="trace-steps" aria-live="polite"></ol>
+    <p id="empty" class="empty-state muted" hidden>No steps recorded for this submission yet. Steps are recorded from the moment this version of BoardCast handles it.</p>
+  </section>
+</section>
+</main>
+{% endblock %}

@@ -2,7 +2,7 @@
 {% block title %}Club report · BoardCast{% endblock %}
 {% block head %}
 {% if client_id %}<script src="https://accounts.google.com/gsi/client" async defer></script>{% endif %}
-<script src="/static/staff.js?v=20261110-1"></script>
+<script src="/static/staff.js?v=20261113-2"></script>
 {% endblock %}
 {% block topbar_right %}<div class="row"><span id="who" class="muted">Staff sign-in</span><button id="signout" class="text-button" type="button" hidden>Switch account</button></div>{% endblock %}
 {% block content %}
@@ -26,55 +26,62 @@
   </section>
 
   <section id="app" hidden>
-    <div class="row" style="justify-content:space-between;margin-bottom:16px">
+    <header class="report-heading">
       <div>
-        <h1 style="font-size:30px" id="heading">Club report</h1>
-        <p class="muted" style="margin:4px 0 0" id="sub"></p>
+        <h1 id="heading">Club report</h1>
+        <p class="muted" id="sub"></p>
       </div>
       <div class="row">
         <a class="btn" href="/submit">New submission</a>
         <a class="btn secondary" href="/admin">Review queue</a>
         <button class="btn secondary" id="refresh" type="button">Refresh</button>
       </div>
-    </div>
+    </header>
+    <p id="notice" class="alert bad" role="alert" hidden></p>
 
-    <div class="cards3" id="totals" style="margin-bottom:16px"></div>
+    <div class="stat-grid" id="totals"></div>
 
-    <div class="card" style="padding:16px;overflow-x:auto">
-      <table class="clicks" style="min-width:640px">
+    <div class="card report-table-card">
+      <table class="clicks">
         <thead><tr>
-          <th>Item</th><th id="club-col" hidden>Club</th><th>Date</th><th>Status</th>
-          <th style="text-align:right">Register</th><th style="text-align:right">Calendar</th>
-          <th style="text-align:right" title="Students who will get a reminder 1 hour before">Reminders</th>
+          <th scope="col">Submission</th><th scope="col" id="club-col" hidden>Club</th><th scope="col">Date</th><th scope="col">Status</th>
+          <th scope="col" class="n">Register clicks</th><th scope="col" class="n">Calendar clicks</th>
+          <th scope="col" class="n">Reminders</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </div>
-    <p class="muted">Register and Calendar count every click from the email and web magazine. Reminders counts students who clicked from their own email and will be reminded an hour before the event.</p>
+    <p class="muted">Clicks are counted from the email and the web magazine. Reminders are students who asked, from their own email, to be reminded an hour before the event. Only events have these numbers.</p>
   </section>
 </main>
 
 <script>
 const {api, el} = Staff;
-let me = null;
+const STATUS = {draft: "Needs fixing", pending: "Waiting for review", approved: "Approved", published: "Published", rejected: "Returned to club"};
+const KIND = {event: "Event", announcement: "Opportunity", achievement: "Achievement"};
+function niceDate(value) {
+  const date = new Date(String(value).slice(0, 10) + "T12:00:00");
+  return Number.isNaN(date.valueOf()) ? String(value) : date.toLocaleDateString("en-GB", {weekday: "short", day: "numeric", month: "short", year: "numeric"});
+}
+function notice(text) { const box = document.getElementById("notice"); box.textContent = text; box.hidden = !text; }
 
 async function load() {
   const res = await api("/admin/api/club");
+  notice("");
   const sa = res.role === "student_affairs";
   document.getElementById("heading").textContent = sa ? "Club report: all clubs" : "Your club's report";
-  document.getElementById("sub").textContent = sa ? "Every submission, all clubs" : "Club: " + (res.club_id || "-");
+  document.getElementById("sub").textContent = sa ? "Every submission from every club, with how students responded." : "Club: " + (res.club_id || "not set");
   document.getElementById("club-col").hidden = !sa;
 
   const t = res.totals, totals = document.getElementById("totals");
-  totals.replaceChildren(...[["Items", res.rows.length], ["Register clicks", t.register],
+  totals.replaceChildren(...[["Submissions", res.rows.length], ["Register clicks", t.register],
                              ["Calendar clicks", t.calendar], ["Reminders set", t.saved]].map(([label, n]) =>
-    el("div", {class: "card", style: "padding:18px"},
-      el("div", {style: "font-size:28px;font-weight:700"}, String(n)), el("div", {class: "muted"}, label))));
+    el("div", {class: "stat-tile"}, el("div", {class: "stat-value"}, String(n)), el("div", {class: "stat-label"}, label))));
 
   const tb = document.getElementById("rows"); tb.replaceChildren();
-  if (!res.rows.length) tb.append(el("tr", {}, el("td", {colspan: "7", class: "muted"}, "No submissions yet.")));
+  if (!res.rows.length) tb.append(el("tr", {}, el("td", {colspan: sa ? "7" : "6", class: "muted"}, "No submissions yet. Start with New submission.")));
   for (const r of res.rows) {
-    const title = el("td", {}, el("b", {}, r.title || "(untitled)"), el("div", {class: "muted"}, r.type));
+    const title = el("td", {}, el("b", {}, r.title || "Untitled submission"), el("div", {class: "report-kind"}, KIND[r.type] || r.type));
     if (r.issues && r.issues.length) title.append(el("ul", {class: "problems"}, ...r.issues.map(p => el("li", {}, p))));
     if (r.status === "rejected" && r.rejection_reason) {
       title.append(el("p", {class: "alert bad", style: "white-space:pre-wrap"}, "Reason: " + r.rejection_reason));
@@ -84,28 +91,29 @@ async function load() {
           const button = event.currentTarget;
           button.disabled = true;
           try {
-            const result = await api(`/admin/api/items/${r.id}/decision`, {
+            const result = await api(`/admin/api/items/${encodeURIComponent(r.id)}/decision`, {
               method: "POST", body: JSON.stringify({decision: "reject", note: r.rejection_reason, retry_notification: true})});
-            if (result.warning) alert(result.warning);
             await load();
-          } catch (e) { alert(e.message); button.disabled = false; }
+            if (result.warning) notice(result.warning);
+          } catch (e) { if (!e.stale) notice(e.message); button.disabled = false; }
         }}, "Retry rejection email"));
       }
     }
     const cells = [title];
     if (sa) cells.push(el("td", {}, r.club_id || "-"));
-    cells.push(el("td", {}, r.date ? String(r.date).slice(0, 10) : "-"),
-               el("td", {}, el("span", {class: "pill " + r.status}, r.status)),
+    cells.push(el("td", {}, r.date ? niceDate(r.date) : "-"),
+               el("td", {}, el("span", {class: "pill " + r.status}, STATUS[r.status] || r.status)),
                ...["register", "calendar", "saved"].map(k => el("td", {class: "n"}, r.type === "event" ? String(r[k]) : "-")));
     tb.append(el("tr", {}, ...cells));
   }
 }
+async function refresh() { try { await load(); } catch (e) { if (!e.stale) notice(e.message); } }
 
-Staff.init(async (who) => {
-  me = who;
+Staff.init(async () => {
   document.getElementById("app").hidden = false;
-  try { await load(); } catch (e) { alert(e.message); }
+  await refresh();
 });
-document.getElementById("refresh").addEventListener("click", load);
+document.getElementById("refresh").addEventListener("click", refresh);
+window.addEventListener("boardcast:signout", () => notice(""));
 </script>
 {% endblock %}

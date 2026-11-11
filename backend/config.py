@@ -49,6 +49,26 @@ ALLOWED_LINK_DOMAINS = [
 
 TIMEZONE = "Asia/Kuala_Lumpur"
 
+
+def _optional_float(name: str) -> float | None:
+    raw = os.getenv(name, "").strip()
+    try:
+        value = float(raw) if raw else None
+    except ValueError:
+        return None
+    return value if value is not None and value >= 0 else None
+
+
+# Pre-review agent (backend/prereview.py): briefs Student Affairs on each pending submission.
+# It never changes a submission's status. PREREVIEW_AUTO=false leaves only the manual button.
+PREREVIEW_AUTO = os.getenv("PREREVIEW_AUTO", "true").lower() == "true"
+PREREVIEW_TEMPERATURE = _optional_float("PREREVIEW_TEMPERATURE")   # unset = the model's default
+
+# Cost estimates in the run trace. Copy the prices for GEMINI_MODEL from the official pricing
+# page (US$ per one million tokens). Unset = the trace shows token counts without a cost.
+GEMINI_PRICE_INPUT_PER_M = _optional_float("GEMINI_PRICE_INPUT_PER_M")
+GEMINI_PRICE_OUTPUT_PER_M = _optional_float("GEMINI_PRICE_OUTPUT_PER_M")
+
 # Google Identity Services client id for the Student Affairs / club web pages (/admin)
 OAUTH_CLIENT_ID = os.getenv("OAUTH_CLIENT_ID", "")
 APU_EMAIL_DOMAINS = ("@mail.apu.edu.my", "@apu.edu.my")

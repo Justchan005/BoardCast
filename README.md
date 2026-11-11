@@ -1,39 +1,72 @@
 # BoardCast
 
-Clubs and APU offices submit a poster once. BoardCast extracts its details, checks them, and routes the submission to Student Affairs for approval. Campus Weekly brings the approved submissions together in one campus edition, by email and as a web magazine.
+Clubs and APU offices submit a poster once. Gemini reads it, a pre-review agent checks it, Student Affairs approves it, and Campus Weekly carries every approved item to subscribed students by email and as a web magazine.
 
-The prototype runs locally through a submission portal and ADK chat. Gemini Enterprise access is pending; the Enterprise connector and cloud deployment still require end-to-end verification. The deployment scripts schedule Campus Weekly for Monday at 8am Malaysia time.
+APU Cloud Innovation Hackathon 2026 · Track 2: Intelligent Automation & Digital Transformation
 
-APU Cloud Innovation Hackathon 2026 · Track 2: Intelligent Automation & Digital Transformation · full spec in `BOARDCAST_SPEC.md`
+| Read this | For |
+| --- | --- |
+| `docs/ARCHITECTURE.md` | The diagram: inputs, model choices, tools, data, actions, outputs, controls |
+| `docs/PROMPTS.md` | Every prompt, its context and how its output is checked |
+| `docs/SUBMISSION_PACK.md` | What to submit, the video plan and the final-round plan |
+| `docs/evidence/` | Output checks and run logs generated from real runs |
+| `BOARDCAST_SPEC.md` | The original build spec (this README is newer where they differ) |
+
+**Status.** The whole workflow runs on a laptop with a Gemini API key: submission portal, poster reading, pre-review agent, review desk, run trace, insights, newsletter build and a local email outbox. Google Cloud deployment, Gmail sending, the Gemini Enterprise chat surface and the Teams bot have scripts and local tests but are not verified end to end. `/demo` shows the same list inside the app.
 
 ---
 
 ## Agentic workflow
 
 ```
-Club rep / Student Affairs ──► ADK / Teams adapter ─────────────┐
-                           └─► Gemini Enterprise (pending) ──┴─► Coordinator agent (routes only)
-                                                       ├── Intake agent  → read_attached_poster · submit_item · fix_item
-                                                       └── Review agent  → list_pending · decide_item · hold_issue
-                                                                │  (every tool calls the API; the API re-checks the user's role)
-Cloud Run API ◄─────────────────────────────────────────────────┘
-  1. Extract   Gemini + response_schema → Pydantic model; QR links decoded in code
-  2. Check     code: missing fields, past dates, unsafe links, consent
-  3. Approve   Student Affairs (human), in chat or on /admin
-  4. Edit      Gemini selects a spotlight id; code renders headline, teaser and subject from approved fields
-  5. Publish   code (Monday 8am): one edition, recipient delivery ledger, Gmail API (local mode: HTML outbox)
-  6. Track     Register / Add-to-calendar clicks, audit log in BigQuery
+Club rep ──► /submit (web) or chat (ADK)
+   1. Read      MODEL  Gemini + response_schema → Pydantic model          prompts/extract.md
+   2. Decode    CODE   QR links decoded with pyzbar, never by the model
+   3. Check     CODE   required fields, past dates, link safety, description adds no numbers, consent
+                       problems → back to the club as a draft
+   4. Pre-review AGENT Gemini chooses which checks this submission needs   prompts/prereview.md
+                       ├─ verify_against_poster   second Gemini read       prompts/verify.md
+                       ├─ find_similar_submissions  code
+                       └─ check_links               code
+                 CODE  fixed rules on the brief: any mismatch, duplicate, link problem, tool error
+                       or skipped check forces "needs attention"; notes without evidence are dropped
+   5. Decide    HUMAN  Student Affairs approves or returns with a reason; red flags must be
+                       acknowledged before an approval is accepted
+   6. Edit      MODEL  Gemini picks the spotlight event id                 prompts/editor.md
+                CODE   every published word is rendered from approved fields
+   7. Publish   CODE   Monday 8am: one edition, recipient ledger, retries for definite failures
+   8. Trace     CODE   every step above is a row in the run trace, with tokens and latency
 ```
 
-| Agent | File | Prompt | Tools / output |
-| --- | --- | --- | --- |
-| Coordinator | `agent/boardcast_agent/agent.py` | `prompts/coordinator.md` | Routes to the two sub-agents; no tools |
-| Intake | same | `prompts/intake.md` | `read_attached_poster`, `submit_item`, `fix_item`, `list_pending` |
-| Review | same | `prompts/review.md` | `list_pending`, `decide_item`, `hold_issue` |
-| Extractor | `backend/extract.py` | `prompts/extract.md` | `EventExtraction` / `AnnouncementExtraction` / `AchievementExtraction` |
-| Editor | `backend/editor.py` | `prompts/editor.md` | `SpotlightChoice`; code renders the `EditorPlan` |
+**What the model decides:** how to read a poster into the schema; which pre-review checks to call and in what order; what to tell the reviewer; which event leads the edition.
 
-The Intake agent has no approval tools. The API checks the caller's role independently, so requesting an approval through chat does not grant permission. `/submit` uses the same submission checks through the web UI; its manual-entry path is clearly labelled and works without an AI connection.
+**Fixed rules (code):** schema validation, QR decoding, submission checks, the verdict rules on the brief, role checks, turn and tool limits, published copy, delivery bookkeeping.
+
+**Human approvals:** the club confirms the details before submitting; Student Affairs approves or returns every item, and can hold an edition.
+
+| Agent or model call | File | Prompt | Tools / output |
+| --- | --- | --- | --- |
+| Extractor | `backend/extract.py` | `prompts/extract.md` | `EventExtraction` / `AnnouncementExtraction` / `AchievementExtraction` |
+| Pre-review agent | `backend/prereview.py` | `prompts/prereview.md` | `verify_against_poster`, `find_similar_submissions`, `check_links`, `finish` |
+| Second reader | `backend/prereview.py` | `prompts/verify.md` | `PosterVerification` (per-field verdicts) |
+| Editor | `backend/editor.py` | `prompts/editor.md` | `SpotlightChoice`; code renders the `EditorPlan` |
+| Chat coordinator | `agent/boardcast_agent/agent.py` | `prompts/coordinator.md` | Routes to the two sub-agents; no tools |
+| Chat intake | same | `prompts/intake.md` | `read_attached_poster`, `submit_item`, `fix_item`, `list_pending` |
+| Chat review | same | `prompts/review.md` | `list_pending`, `decide_item`, `hold_issue` |
+
+The pre-review agent has no tool that changes a submission. The chat intake agent has no approval tool. The API checks the caller's role on every request, so asking for an approval in chat does not grant one.
+
+## Run trace, output checks and insights
+
+| What | Where | Notes |
+| --- | --- | --- |
+| Run trace of one submission | `/admin/trace/{item_id}`; **Run trace** on the review desk | Model, tool, code, human and system steps in order, with prompt version, tokens and latency. **Download run log (.md)** exports it |
+| AI brief | Review desk, above the poster | Verdict, red flags, the checks the agent chose, the model's notes, and whether fixed rules overruled the model |
+| Output checks | `python -m eval.output_checks` → `docs/evidence/` | Normal, difficult, missing-data and failure cases with expected, actual and gaps. Makes real Gemini calls |
+| Poster accuracy | `python -m eval.run_eval` → `eval/results/` | Field accuracy on real APU posters |
+| Insights | `/admin/insights` (Student Affairs) | Counts by status, median wait for a decision, reviewer decisions next to the brief, model calls, tokens and estimated cost |
+
+Cost needs two settings: `GEMINI_PRICE_INPUT_PER_M` and `GEMINI_PRICE_OUTPUT_PER_M` (US$ per million tokens, from the official pricing page for your model). Without them the app shows token counts only.
 
 ## Microsoft Teams
 
@@ -66,7 +99,7 @@ npx @microsoft/m365agentsplayground         # opens a Teams-like chat on http://
 ## Prompt design
 
 - Prompts are Markdown files in `prompts/` with `name`, `version` and `changelog` headers.
-- Successful extractor and editor operations record prompt versions in the audit trail. Full chat tracing, token usage and cost accounting remain follow-up work.
+- Every Gemini call made by the backend records its prompt version, model, tokens and latency in the run trace. Conversations in the ADK chat surface are not traced yet.
 - QR decoding, validation, counts and layout run in code. Gemini chooses only a valid spotlight event id; headline, teaser and subject are rendered from approved titles and dates. Model-written prose is not published, including prose from older saved previews.
 - Chat tools select an exact attachment filename or the current message's upload. They never infer upload order from alphabetically sorted artifact names. Production identity comes from the authenticated adapter; local demo identity fallbacks cannot override it.
 
@@ -97,7 +130,8 @@ edition for every student, in fixed numbered sections (empty ones are left out):
 
 Student Affairs can open **Newsletter template** on `/admin`, choose **Classic** (bordered
 sections), **Newspaper** (a lead story beside its poster, supporting story columns, and a
-schedule below the news), or **Custom** (a reusable theme built from draggable placeholders), and preview the email with
+schedule below the news), **Spotlight** (a large lead poster followed by supporting story columns),
+**Bulletin** (compact poster-and-story rows), or **Custom** (a reusable theme built from draggable placeholders), and preview the email with
 approved content. **Use this template** saves the default for future editions and also updates
 the current edition if it is still an editable preview. The saved choice controls both email
 and web layouts. Editions that have begun delivery keep their original layout, including retries.
@@ -112,7 +146,10 @@ mobile use. **Preview newsletter** shows the candidate email before **Use this t
 The web edition supports three columns; email folds the third into the second for readability.
 Appearance settings become the default for future editions. Story placement is saved to the
 current editable edition only. A sent edition can be used to try a design without changing it.
-Resetting the design restores the selected preset. This editor runs locally without Gemini.
+Resetting the design restores the selected preset. Spotlight keeps its lead poster above the story;
+Bulletin keeps stories in a single list. Controls only appear when that layout supports them.
+Unsaved changes remain visible above the editor, even when it is collapsed. **Save template**
+applies them; **Discard changes** restores the saved choice. This editor runs locally without Gemini.
 
 Choose **Custom** to design the newsletter header and the layout used for each story.
 Move the newsletter title, edition date and introduction between header rows; move the story
@@ -149,6 +186,8 @@ the same Firestore-compatible storage format when running in the cloud.
 | 1-hour event reminder | `templates/reminder_email.html`, hourly `POST /reminders/run` | Students who clicked Register / Add to calendar in their email |
 | Weekly email | `templates/weekly_email.html` | Students |
 | Chat | ADK locally; Gemini Enterprise pending access/verification | Club reps, Student Affairs |
+| Run trace and run-log export | `/admin/trace/{item_id}` | Student Affairs; club reps for their own items |
+| Insights: counts, tokens, cost | `/admin/insights` | Student Affairs |
 
 ## Repo map
 
@@ -157,7 +196,8 @@ the same Firestore-compatible storage format when running in the cloud.
 | `agent/` | ADK agents (coordinator + 2 sub-agents) and their tools |
 | `backend/` | FastAPI on Cloud Run: API, checks, extract, editor, issue builder, mailer, web UI |
 | `prompts/` | Versioned prompt files |
-| `eval/` | Real-poster accuracy eval |
+| `eval/` | Real-poster accuracy eval (`run_eval`) and end-to-end output checks (`output_checks`) |
+| `docs/` | Architecture, prompts, submission pack, generated evidence |
 | `shared/` | Pydantic schemas + prompt loader |
 | `templates/`, `static/` | Email, magazine, student and admin pages |
 | `infra/` | `setup.sh` (all Google Cloud resources), `deploy_agent.sh` |
@@ -166,7 +206,7 @@ the same Firestore-compatible storage format when running in the cloud.
 
 ## Data (Firestore)
 
-`roles/{email}` role + club · `items/{id}` type, status, data, issues · `subscribers/{email}` active · `issues/{id}` week, status, item ids, editor plan, frozen delivery snapshot and recipient ledger · `clicks` · `saved/{email|item}` events a student registered for or added, reminded flag · `audit` (fallback when BigQuery is off)
+`roles/{email}` role + club · `items/{id}` type, status, data, issues · `subscribers/{email}` active · `issues/{id}` week, status, item ids, editor plan, frozen delivery snapshot and recipient ledger · `clicks` · `saved/{email|item}` events a student registered for or added, reminded flag · `audit` (fallback when BigQuery is off) · `trace` one row per model call, tool call, code check and human decision · `prereviews/{item_id}` the AI brief
 
 Item status: `draft` (problems to fix) → `pending` → `approved` → `published`, or `rejected`.
 
@@ -286,22 +326,26 @@ QR decoding needs the `zbar` library (`brew install zbar` / `sudo apt install li
 
 ## Judging criteria → evidence
 
-| Criterion | Where |
+| Criterion | Where a judge can check it |
 | --- | --- |
-| Problem statement value | Deck: poster count vs APSpace Notifications, survey, club interviews |
-| UI | `/demo`, `/submit`, `/subscribe`, `/m/{id}`, `/admin`, weekly email; Enterprise chat once verified |
-| Agentic workflow | Diagram above; `agent/`, `backend/editor.py` |
-| Prompting + orchestration | `prompts/`, development-set `eval/results/`, ADK sub-agents, deterministic approved-field rendering |
-| App output | A real issue from real posters; extraction accuracy table |
-| Business value | Measure channels per event, promotion time saved and student reach in a pilot; token/cost accounting is not implemented yet |
-| Pitch video | Storyboard in `BOARDCAST_SPEC.md` |
+| A. Problem value | Deck: lift-lobby poster count, student survey, club interviews (collected by the team) |
+| B. User interface | `/demo`, `/submit` (four progress steps, manual fallback), `/admin` (brief, source poster, student copy, reasons), `/m/{id}`, weekly email |
+| C. Agentic workflow | `docs/ARCHITECTURE.md`; `/admin/trace/{id}` shows model choices, tools and controls for a real run |
+| D. Prompting and orchestration | `docs/PROMPTS.md`, `prompts/`, `eval/results/` before and after a prompt change, run logs in `docs/evidence/` |
+| E. App output | `docs/evidence/output_checks.md`; a real edition in `/m/{id}`; extraction accuracy table |
+| F. Business value | `/admin/insights`: measured counts, tokens and cost; time saved uses the team's survey figures, labelled as assumptions |
+| G. Presentation | Storyboard and final-round plan in `docs/SUBMISSION_PACK.md` |
 
 ## Known gaps
 
-- Gemini Enterprise access is pending; real identity, attachment handling and cloud deployment have not been verified end to end.
-- Teams currently uses in-memory sessions/artifacts and needs durable storage before a campus pilot.
-- The archived 14-poster evaluation is a development set. Held-out accuracy, broader difficult-poster coverage, workflow latency and measured cost remain to be collected.
-- An ambiguous email-provider outcome requires human reconciliation. The system intentionally avoids automatic resends that could create duplicates.
+- Google Cloud deployment, Gmail delivery, Gemini Enterprise chat and the Teams bot are not verified end to end.
+- On Cloud Run the automatic pre-review should be triggered from the `item-submitted` Pub/Sub message; today it runs in a background thread, which suits the local server. The **Run pre-review** button is unaffected.
+- The 14-poster evaluation is a development set. Held-out accuracy and a wider set of difficult posters remain to be collected.
+- The output checks are four scripted journeys on generated posters. They show the controls work, not how often the model is right.
+- The duplicate search compares titles and posters; it does not understand that two differently named posts are the same event.
+- The link check tests format and domain. It does not open the destination page.
+- ADK chat conversations are not written to the run trace.
+- An ambiguous email-provider outcome needs a person to reconcile it. The system avoids automatic resends that could create duplicates.
 
 ## Production at APU
 

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ plan.subject_line }}</title>
+<style>
+body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}
+a:focus-visible{outline:3px solid currentColor;outline-offset:4px}
+@media only screen and (max-width:600px){
+ .pv-inset{padding-left:20px!important;padding-right:20px!important}
+ .pv-email-column{display:block!important;width:100%!important;padding:0!important;box-sizing:border-box!important}
+ .pv-email-title{font-size:38px!important}.pv-email-story-title{font-size:26px!important}
+ .pv-email-header-name,.pv-email-header-date{display:block!important;width:100%!important;text-align:left!important}
+ .pv-email-header-date{padding-top:18px!important}
+ .pv-email-lead-copy{padding:24px 20px!important}
+ .pv-email-row-poster{width:100px!important;padding-right:18px!important}
+ .pv-email-row-poster img{width:82px!important}
+ .pv-email-stage{height:240px!important}.pv-email-stage img{max-height:240px!important}
+ .pv-email-stage-lead{height:auto!important;padding:16px!important}.pv-email-stage-lead img{max-height:420px!important}
+ .pv-email-section-title{font-size:24px!important}
+}
+@media only screen and (max-width:360px){
+ .pv-inset{padding-left:16px!important;padding-right:16px!important}
+ .pv-email-title{font-size:33px!important}
+ .pv-email-row-poster,.pv-email-row-copy{display:block!important;width:100%!important;padding:0!important}
+ .pv-email-row-poster{padding-bottom:20px!important}.pv-email-row-poster img{width:112px!important}
+ .pv-email-stamp{display:inline-block!important;vertical-align:top!important;margin-right:14px!important}
+ .pv-email-bulletin-photo{display:inline-block!important;vertical-align:top!important}
+}
+</style></head>
+{% macro kind(item) -%}{{ 'Event' if item.type == 'event' else 'Campus win' if item.type == 'achievement' else 'Opportunity' }}{%- endmacro %}
+{% macro poster(item, lead=False) -%}
+{% if item.show_poster and item.poster_uri %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;background:{{ variant_style.surface }};border:1px solid {{ variant_style.line }};">
+ <tr><td class="pv-email-stage{% if lead %} pv-email-stage-lead{% endif %}" align="center" valign="middle" height="{{ 460 if lead else 240 }}" style="height:{{ 460 if lead else 240 }}px;padding:16px;vertical-align:middle;">
+  <a href="{{ base }}/p/{{ item.id }}.jpg" style="display:block;color:{{ variant_design.accent_color }};text-decoration:none;">
+   <img src="{{ base }}/p/{{ item.id }}.jpg" width="{{ 560 if lead else 252 }}" alt="Poster: {{ item.data.title or item.data.team }}" style="display:block;border:0;width:auto;max-width:100%;height:auto;max-height:{{ 460 if lead else 240 }}px;margin:0 auto;">
+  </a>
+ </td></tr>
+</table>
+{% endif %}
+{%- endmacro %}
+{% macro story(item, lead=False, row=False) -%}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" data-story-id="{{ item.id }}" style="width:100%;border-collapse:collapse;table-layout:fixed;">
+ <tr>
+ {% if row %}
+ <td class="pv-email-row-poster" width="124" valign="top" style="width:124px;padding:0 24px 0 0;vertical-align:top;">
+  <div class="pv-email-stamp" style="margin:0 0 14px;padding:12px 10px;background:{{ variant_style.surface }};border:1px solid {{ variant_style.line }};color:{{ variant_design.text_color }};font-family:{{ variant_fonts.body }};">
+   <p style="margin:0;font-size:12px;line-height:1.4;font-weight:bold;">{{ kind(item) }}</p>
+   {% if item.type == 'event' and item.data.date %}<p style="margin:6px 0 0;font-size:13px;line-height:1.4;font-weight:bold;">{{ item.data.date|nice_date }}</p>{% elif item.data.deadline %}<p style="margin:6px 0 0;font-size:13px;line-height:1.4;">Closes<br>{{ item.data.deadline|nice_date }}</p>{% endif %}
+  </div>
+  {% if item.show_poster and item.poster_uri %}<a class="pv-email-bulletin-photo" href="{{ base }}/p/{{ item.id }}.jpg" style="display:block;background:{{ variant_style.surface }};text-decoration:none;"><img src="{{ base }}/p/{{ item.id }}.jpg" width="100" alt="Poster: {{ item.data.title or item.data.team }}" style="display:block;border:0;width:100px;max-width:100%;height:auto;"></a>{% endif %}
+ </td>
+ {% endif %}
+ <td class="{{ 'pv-email-row-copy' if row else '' }}" valign="top" style="padding:0;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">
+  {% if not row and item.show_poster and item.poster_uri %}{{ poster(item, lead) }}{% endif %}
+  <div class="{{ 'pv-email-lead-copy' if lead else '' }}" style="padding:{{ '28px' if lead else '22px 0 0' if not row and item.show_poster and item.poster_uri else '0' }};{% if lead %}background:{{ variant_style.surface }};border-bottom:3px solid {{ variant_design.accent_color }};{% endif %}">
+   <h2 class="pv-email-story-title" style="margin:0 0 16px;font-family:{{ variant_fonts.headline }};font-size:{{ 36 if lead else 25 if not row else 24 }}px;line-height:1.15;letter-spacing:-.025em;font-weight:bold;color:{{ variant_design.text_color }};">{{ item.data.title or item.data.team }}</h2>
+   {% if not row %}<p style="margin:0 0 16px;color:{{ variant_style.muted }};font-family:{{ variant_fonts.body }};font-size:12px;line-height:1.4;font-weight:bold;">{{ kind(item) }}</p>{% endif %}
+   <div style="font-family:{{ variant_fonts.body }};font-size:16px;line-height:1.65;color:{{ variant_design.text_color }};">
+    {% include '_publication_variant_copy.html' %}
+   </div>
+  </div>
+ </td></tr>
+</table>
+{%- endmacro %}
+<body style="margin:0;padding:0;background:#eef1f6;color:{{ variant_design.text_color }};">
+ <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;background:#eef1f6;">
+ <tr><td align="center" style="padding:20px 8px;">
+ <!--[if mso]><table role="presentation" width="720" cellpadding="0" cellspacing="0"><tr><td><![endif]-->
+ <table role="presentation" width="100%" cellpadding="0" cellspacing="0" data-newsletter-template="{{ variant }}" style="width:100%;max-width:720px;border-collapse:collapse;background:{{ variant_design.paper_color }};color:{{ variant_design.text_color }};font-family:{{ variant_fonts.body }};">
+  {% if variant == 'spotlight' %}
+  <tr><td class="pv-inset" align="center" bgcolor="{{ variant_design.accent_color }}" style="padding:38px 32px 30px;background:{{ variant_design.accent_color }};color:{{ variant_style.accent_ink }};">
+   <h1 class="pv-email-title" style="margin:0 0 18px;font-family:{{ variant_fonts.headline }};font-size:54px;line-height:1;letter-spacing:-.035em;color:{{ variant_style.accent_ink }};">Campus Weekly</h1>
+   <p style="margin:0;font-size:14px;line-height:1.7;color:{{ variant_style.accent_ink }};">{{ issue.week_start.strftime('%d %B %Y') }}<br>Clubs, campus life &amp; opportunities</p>
+   {% if issue_id %}<p style="margin:20px 0 0;font-size:13px;"><a href="{{ base }}/m/{{ issue_id }}" style="color:{{ variant_style.accent_ink }};font-weight:bold;text-decoration:underline;">Read this edition online</a></p>{% endif %}
+  </td></tr>
+  {% if plan.teaser and variant_stories|length > 1 %}<tr><td class="pv-inset" style="padding:22px 32px;background:{{ variant_style.surface }};border-bottom:1px solid {{ variant_style.line }};"><p style="margin:0;font-size:16px;line-height:1.65;color:{{ variant_design.text_color }};">{{ plan.teaser }}</p></td></tr>{% endif %}
+  {% else %}
+  <tr><td class="pv-inset" style="padding:30px 32px 26px;border-top:6px solid {{ variant_design.accent_color }};border-bottom:1px solid {{ variant_style.line }};">
+   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">
+    <tr><td class="pv-email-header-name" valign="top" style="vertical-align:top;">
+     <h1 class="pv-email-title" style="margin:0 0 10px;font-family:{{ variant_fonts.headline }};font-size:40px;line-height:1.05;letter-spacing:-.035em;color:{{ variant_design.text_color }};">Campus Weekly</h1>
+     <p style="margin:0;color:{{ variant_style.muted }};font-size:14px;line-height:1.5;">Clubs, campus life &amp; opportunities</p>
+    </td><td class="pv-email-header-date" align="right" valign="top" width="116" style="width:116px;vertical-align:top;">
+     <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:{{ variant_design.accent_color }};color:{{ variant_style.accent_ink }};"><tr><td style="padding:13px 16px;text-align:center;">
+      <p style="margin:0;font-size:30px;font-weight:bold;line-height:1;color:{{ variant_style.accent_ink }};">{{ issue.week_start.strftime('%d') }}</p><p style="margin:5px 0 0;font-size:12px;font-weight:bold;line-height:1.4;color:{{ variant_style.accent_ink }};">{{ issue.week_start.strftime('%b %Y') }}</p>
+     </td></tr></table>
+    </td></tr>
+   </table>
+   {% if plan.teaser and variant_stories|length > 1 %}<p style="margin:22px 0 0;font-size:16px;line-height:1.65;">{{ plan.teaser }}</p>{% endif %}
+   {% if issue_id %}<p style="margin:16px 0 0;font-size:13px;"><a href="{{ base }}/m/{{ issue_id }}" style="color:{{ variant_design.accent_color }};font-weight:bold;">Read this edition online</a></p>{% endif %}
+  </td></tr>
+  {% endif %}
+  {% if not variant_stories %}
+  <tr><td class="pv-inset" style="padding:36px 32px;"><h2 style="font-family:{{ variant_fonts.headline }};font-size:28px;line-height:1.2;margin:0 0 16px;">Until the next edition</h2><p style="font-size:16px;line-height:1.65;margin:0;">There are no new submissions in this edition.</p></td></tr>
+  {% elif variant == 'spotlight' %}
+  <tr><td class="pv-inset" style="padding:32px;">{{ story(variant_lead, True) }}</td></tr>
+  {% if variant_stories|length > 1 %}
+  <tr><td class="pv-inset" style="padding:0 32px 28px;">
+   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border-top:3px solid {{ variant_design.accent_color }};border-bottom:1px solid {{ variant_style.line }};"><tr><td style="padding:18px 0;"><h2 class="pv-email-section-title" style="margin:0;font-family:{{ variant_fonts.headline }};font-size:28px;line-height:1.2;color:{{ variant_design.text_color }};">More from campus</h2></td><td align="right" style="font-size:13px;color:{{ variant_style.muted }};padding-left:12px;">{{ variant_stories|length - 1 }} {{ 'story' if variant_stories|length == 2 else 'stories' }}</td></tr></table>
+  </td></tr>
+  <tr><td class="pv-inset" style="padding:0 32px;">
+   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;table-layout:fixed;"><tr>
+   {% for column in variant_email_columns %}
+    <td class="pv-email-column" valign="top" width="{{ 100 // variant_email_columns|length }}%" style="vertical-align:top;width:{{ 100 // variant_email_columns|length }}%;padding:0 {{ '16px' if not loop.last else '0' }} 0 {{ '16px' if not loop.first else '0' }};">
+     {% for item in column %}<div style="padding:0 0 28px;margin:0 0 28px;border-bottom:1px solid {{ variant_style.line }};">{{ story(item) }}</div>{% endfor %}
+    </td>
+   {% endfor %}
+   </tr></table>
+  </td></tr>
+  {% endif %}
+  {% else %}
+   {% for item in variant_stories %}
+   <tr><td class="pv-inset" style="padding:28px 32px 0;">{{ story(item, False, True) }}<div style="height:28px;line-height:28px;border-bottom:1px solid {{ variant_style.line }};">&nbsp;</div></td></tr>
+   {% endfor %}
+  {% endif %}
+  <tr><td class="pv-inset" bgcolor="{{ variant_style.surface }}" style="padding:26px 32px 30px;background:{{ variant_style.surface }};border-top:1px solid {{ variant_style.line }};">
+   <div style="font-size:13px;line-height:1.7;color:{{ variant_style.muted }};">
+    <p style="margin:0 0 8px;font-weight:bold;color:{{ variant_design.text_color }};">Campus Weekly · BoardCast</p>
+    <p style="margin:0 0 8px;">Submitted by APU clubs and offices. Approved by Student Affairs.</p>
+    <p style="margin:0 0 8px;">All dates and times are in Malaysia time. BoardCast never asks for your password.</p>
+    {% if prefs_url or unsubscribe_url %}<p style="margin:12px 0 0;">{% if prefs_url %}<a href="{{ prefs_url }}" style="color:{{ variant_design.accent_color }};">Manage subscription</a>{% endif %}{% if prefs_url and unsubscribe_url %} · {% endif %}{% if unsubscribe_url %}<a href="{{ unsubscribe_url }}" style="color:{{ variant_design.accent_color }};">Unsubscribe</a>{% endif %}</p>{% endif %}
+   </div>
+  </td></tr>
+ </table>
+ <!--[if mso]></td></tr></table><![endif]-->
+ </td></tr></table>
+</body></html>

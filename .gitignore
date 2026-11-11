@@ -16,3 +16,4 @@ docs/flow_video/build/
 .claude/
 .DS_Store
 Thumbs.db
+demo_data/

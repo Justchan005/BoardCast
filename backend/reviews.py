@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from shared.schemas import Role
 
-from . import audit, auth, config, checks, issue_builder, mailer, store
+from . import audit, auth, config, checks, issue_builder, mailer, prereview, store, trace
 
 REJECTION_FIELDS = {
     "rejection_reason": None, "rejected_by": None, "rejected_at": None, "rejection_notification": None,
@@ -51,8 +51,45 @@ def _notify_rejection(item: dict) -> dict:
     return _result(item, notice)
 
 
+def _current_brief(item: dict) -> dict | None:
+    """The finished AI brief for exactly this version of the submission, or None. A brief that
+    cannot be read never blocks a review: the reviewer simply decides without it."""
+    try:
+        brief = prereview.get(item)
+    except Exception:
+        return None
+    return brief if brief.get("status") == "done" and brief.get("current") else None
+
+
+def open_flags(item: dict) -> list[str]:
+    """Points the pre-review asked the reviewer to check before approving this version."""
+    brief = _current_brief(item)
+    if not brief or brief.get("recommendation") != "needs_attention":
+        return []
+    flags = [str(flag) for flag in brief.get("flags") or []]
+    flags += [str(p.get("text")) for p in brief.get("points") or [] if p.get("severity") == "warn" and p.get("text")]
+    return flags or [str(brief.get("headline") or "The pre-review asked for a closer look.")]
+
+
+def _trace_decision(item: dict, decision: str, reason: str, reviewer: str, via: str,
+                    acknowledged: list[str] | None = None) -> None:
+    """The human gate, with what the AI brief said when the person decided (advice, not authority)."""
+    brief = _current_brief(item)
+    advice = brief["recommendation"] if brief else "no current brief"
+    summary = ("Student Affairs approved it for the next edition" if decision == "approve"
+               else "Student Affairs returned it to the club with a reason")
+    if acknowledged:
+        summary += (f", after confirming they had checked the {len(acknowledged)} "
+                    f"point{'' if len(acknowledged) == 1 else 's'} raised by the pre-review")
+    trace.record("human", "approved" if decision == "approve" else "rejected", summary,
+                 item_id=item["id"], actor=reviewer,
+                 detail={"via": via, "reason": reason or None, "ai_brief_at_decision": advice,
+                         "ai_points_acknowledged": acknowledged or []})
+
+
 def decide_item(item_id: str, decision: str, note: str | None, reviewer: str, *, via: str,
-                retry_notification: bool = False, expected_updated_at: str | None = None) -> dict:
+                retry_notification: bool = False, expected_updated_at: str | None = None,
+                acknowledge_flags: bool = False) -> dict:
     auth.require_role(reviewer, Role.STUDENT_AFFAIRS)
     item = store.get_item(item_id)
     if not item:
@@ -80,8 +117,16 @@ def decide_item(item_id: str, decision: str, note: str | None, reviewer: str, *,
         problems = checks.run_all(item['type'], item['data']) + checks.description_problems(item.get('description'), item['data'])
         if problems:
             raise HTTPException(409, 'This submission needs corrections before approval: ' + '; '.join(problems))
+        # Control: the AI brief is advice, but its red flags cannot be approved past unread.
+        acknowledged = open_flags(item)
+        if acknowledged and not acknowledge_flags:
+            raise HTTPException(409, f"The AI pre-review raised {len(acknowledged)} "
+                                     f"point{'' if len(acknowledged) == 1 else 's'} to check before approval: "
+                                     + " | ".join(acknowledged[:5])
+                                     + " Confirm that you have checked them, then approve again.")
         fields = {**REJECTION_FIELDS, "status": "approved", "approved_by": reviewer.lower()}
     else:
+        acknowledged = []
         same_rejection = item["status"] == "rejected" and item.get("rejection_reason") == reason
         previous = item.get("rejection_notification") or {}
         if same_rejection and previous.get("status") in ("sent", "sending"):
@@ -95,6 +140,7 @@ def decide_item(item_id: str, decision: str, note: str | None, reviewer: str, *,
     if not store.update_item_if_unchanged(item, **fields):
         raise HTTPException(409, "This submission changed while you were reviewing it. Refresh and review it again.")
     audit.log(reviewer, decision, item_id, {"note": reason or None, "via": via})
+    _trace_decision(item, decision, reason, reviewer, via, acknowledged)
     if decision == "reject":
         return _notify_rejection({**item, **fields})
-    return {"id": item_id, "status": "approved"}
+    return {"id": item_id, "status": "approved", "ai_points_acknowledged": len(acknowledged)}

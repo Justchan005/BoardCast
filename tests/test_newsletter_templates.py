@@ -76,7 +76,7 @@ def test_default_layout_and_available_choices(api, layout_db):
     response = api.get(PATH, headers=headers())
     assert response.status_code == 200
     assert response.json()["template"] == "classic"
-    assert {entry["id"] for entry in response.json()["templates"]} == {"classic", "newspaper", "custom"}
+    assert {entry["id"] for entry in response.json()["templates"]} == {"classic", "newspaper", "spotlight", "bulletin", "custom"}
     assert not layout_db.collection("settings").document("publication").get().exists
 
 
@@ -145,7 +145,7 @@ def test_unknown_issue_does_not_change_default(api):
     assert issue_builder.default_newsletter_template() == "classic"
 
 
-@pytest.mark.parametrize("template", ["classic", "newspaper"])
+@pytest.mark.parametrize("template", ["classic", "newspaper", "spotlight", "bulletin"])
 @pytest.mark.parametrize("saved_edition", [False, True])
 def test_layout_preview_is_read_only_escaped_and_has_no_personal_tokens(api, layout_db, monkeypatch, template, saved_edition):
     add_event(title="Workshop <script>alert('poster')</script>")
@@ -186,6 +186,8 @@ def test_saved_edition_preview_preserves_its_spotlight(api, monkeypatch):
 @pytest.mark.parametrize("template,email_path,web_path", [
     ("classic", "weekly_email.html", "magazine.html"),
     ("newspaper", "weekly_email_newspaper.html", "magazine_newspaper.html"),
+    ("spotlight", "weekly_email_variant.html", "magazine_variant.html"),
+    ("bulletin", "weekly_email_variant.html", "magazine_variant.html"),
 ])
 def test_selected_layout_renders_email_and_web(api, monkeypatch, template, email_path, web_path):
     issue_id = make_issue()

@@ -13,7 +13,7 @@ const Staff = (() => {
     document.getElementById("app")?.setAttribute("hidden", "");
     document.getElementById("signin")?.removeAttribute("hidden");
     document.getElementById("signout")?.setAttribute("hidden", "");
-    const who = document.getElementById("who"); if (who) who.textContent = "Staff sign-in";
+    const who = document.getElementById("who"); if (who) { who.textContent = "Staff sign-in"; who.removeAttribute("data-role"); who.removeAttribute("title"); }
     const error = document.getElementById("signin-error");
     if (error) { error.textContent = message; error.hidden = !message; }
     const submit = document.querySelector('#devform button'); if (submit) submit.disabled = false;
@@ -77,7 +77,10 @@ const Staff = (() => {
         persist();
         document.getElementById("signin").hidden = true;
         document.getElementById("signin-error").hidden = true;
-        document.getElementById("who").textContent = me.email + " · " + (me.role === "student_affairs" ? "Student Affairs" : "Club rep");
+        const who = document.getElementById("who"), roleName = me.role === "student_affairs" ? "Student Affairs" : "Club rep";
+        who.textContent = me.email + " · " + roleName;
+        who.setAttribute("data-role", roleName);   // narrow screens show the role alone
+        who.setAttribute("title", me.email);
         document.getElementById("signout")?.removeAttribute("hidden");
         await onReady(me);
       } catch (e) {

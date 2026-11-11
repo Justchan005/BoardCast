@@ -38,7 +38,7 @@ function fixture(request = async () => ({template: 'classic'}), libraryRequest =
     releasePointerCapture() { this.pointerCapture = null; }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element('', id)); return elements.get(id); };
-  const radios = ['classic', 'newspaper', 'custom'].map(value => new Element(value));
+  const radios = ['classic', 'newspaper', 'spotlight', 'bulletin', 'custom'].map(value => new Element(value));
   get('newsletter-preview-frame').setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox');
   get('newsletter-preview-frame').setAttribute('title', 'Selected template preview');
   const context = vm.createContext({
@@ -124,6 +124,36 @@ function assertExactlyOnce(f, expected = sampleItems.map(item => item.id)) {
 }
 
 async function run() {
+  {
+    const f = fixture(); f.panel.setIssue(editable()); await f.panel.init();
+    for (const choice of ['spotlight', 'bulletin']) {
+      f.choose(choice); assert.equal(f.selected(), choice);
+      assert.equal(f.get('newsletter-change-bar').hidden, false);
+      assert.equal(f.get('newsletter-dirty-marker').hidden, false);
+      assert.match(f.get('newsletter-change-message').textContent, /Save or discard/);
+      f.get('newsletter-discard').onclick();
+      assert.equal(f.selected(), 'classic');
+      assert.equal(f.get('newsletter-change-bar').hidden, true);
+      assert.equal(f.panel.blocksPublish(), false);
+    }
+    f.choose('custom'); f.choose('spotlight');
+    assert.equal(f.get('newsletter-customize').checked, false, 'a built-in layout starts with its own composition');
+    f.get('newsletter-discard-bottom').onclick();
+    assert.equal(f.selected(), 'classic');
+    console.log('PASS distinct presets, visible unsaved state and discard');
+  }
+  {
+    const pending = deferred();
+    const f = fixture(async (route, options) => options.method === 'PUT' ? pending.promise : {template:'classic'});
+    f.panel.setIssue(editable()); await f.panel.init(); f.choose('spotlight');
+    const saving = f.get('newsletter-save-top').onclick();
+    assert.equal(f.get('newsletter-discard').disabled, true);
+    f.get('newsletter-discard').onclick(); assert.equal(f.selected(), 'spotlight');
+    pending.resolve({template:'spotlight', issue_id:'edition-a', applied_to_issue:true}); await saving;
+    assert.equal(f.get('newsletter-change-bar').hidden, true);
+    assert.equal(f.panel.blocksPublish(), false);
+    console.log('PASS top save action and discard protection during save');
+  }
   {
     const f = fixture(); let notifications = 0;
     f.panel.setIssue(editable());

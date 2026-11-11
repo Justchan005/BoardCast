@@ -102,7 +102,7 @@ def test_invalid_stored_custom_theme_uses_safe_defaults(raw):
 
 def test_custom_is_discoverable_and_preserves_rows_as_future_appearance_defaults(api, theme_db):
     choices = api.get(PATH, headers=STAFF).json()
-    assert [item["id"] for item in choices["templates"]] == ["classic", "newspaper", "custom"]
+    assert [item["id"] for item in choices["templates"]] == ["classic", "newspaper", "spotlight", "bulletin", "custom"]
     assert choices["design_defaults"]["custom"]["story_rows"]
     issue_id = issue_builder.build_preview(date(2099, 11, 9))[0]
     response = api.put(PATH, headers=STAFF, json={"template": "custom", "issue_id": issue_id,

@@ -5,6 +5,7 @@ import io
 import re
 import uuid
 from datetime import datetime
+from html import unescape
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -14,7 +15,7 @@ from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
 from shared.schemas import ItemType, Role
-from . import auth, checks, config, issue_builder, store, audit
+from . import auth, checks, config, extract, issue_builder, store, audit, trace
 
 router = APIRouter()
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -56,7 +57,7 @@ def submission_page():
     return HTMLResponse(issue_builder.env.get_template('submit.html').render(
         client_id=config.OAUTH_CLIENT_ID, dev_mode=config.DEV_MODE, local_mode=config.LOCAL_MODE,
         demo_switcher=config.LOCAL_MODE, demo_view='club',
-        ai_configured=bool(config.GEMINI_API_KEY or (config.USE_VERTEX and config.PROJECT_ID))))
+        ai_configured=extract.ai_configured(), required_fields=checks.REQUIRED))
 
 
 @router.post('/admin/api/uploads')
@@ -101,6 +102,8 @@ async def upload_poster(file: UploadFile = File(...), email: str = Depends(auth.
         'created_at': store.now(), 'original_name': Path(file.filename or 'poster').name,
     })
     audit.log(email, 'web_poster_uploaded', None, {'upload_id': upload_id})
+    trace.record('human', 'poster_uploaded', 'Poster uploaded; decoded and re-saved as a clean JPEG (metadata removed)',
+                 poster_uri=uri, actor=email, detail={'bytes': len(image)})
     return {'upload_id': upload_id, 'filename': Path(file.filename or 'poster').name}
 
 
@@ -111,7 +114,7 @@ class ExtractUpload(BaseModel):
 @router.post('/admin/api/uploads/{upload_id}/extract')
 def extract_upload(upload_id: str, body: ExtractUpload, email: str = Depends(auth.web_user)):
     upload = _own_upload(upload_id, email)
-    if not (config.GEMINI_API_KEY or (config.USE_VERTEX and config.PROJECT_ID)):
+    if not extract.ai_configured():
         raise HTTPException(503, 'Gemini is not configured. Enter the poster details manually; you can still submit for review.')
     from . import main
     try:
@@ -120,6 +123,8 @@ def extract_upload(upload_id: str, body: ExtractUpload, email: str = Depends(aut
         raise
     except Exception as exc:
         audit.log(email, 'web_extraction_failed', None, {'error_type': type(exc).__name__})
+        trace.record('code', 'manual_entry_fallback', 'Gemini was unavailable; the club was asked to enter the details manually',
+                     poster_uri=upload['uri'], actor='code', ok=False, detail={'error_type': type(exc).__name__})
         raise HTTPException(502, 'The poster could not be read with Gemini. Your upload is saved; enter or correct the details manually.')
     store.db().collection('poster_uploads').document(upload_id).update({
         'extracted_type': body.type.value, 'extracted_data': result['data'], 'extracted_at': store.now()})
@@ -180,8 +185,42 @@ def _local_only():
 @router.get('/demo', response_class=HTMLResponse)
 def demo_page():
     _local_only()
+    items = store.list_items(['draft', 'pending', 'approved', 'published', 'rejected'])
+    latest = max(items, key=lambda i: str(i.get('created_at') or ''), default=None)
     return HTMLResponse(issue_builder.env.get_template('demo.html').render(
-        demo_switcher=config.LOCAL_MODE, demo_view='home'))
+        demo_switcher=config.LOCAL_MODE, demo_view='home', ai_configured=extract.ai_configured(),
+        model=config.GEMINI_MODEL, latest_item_id=latest['id'] if latest else None))
+
+
+def _outbox_summary(path: Path) -> dict:
+    """Read only the local mailer's escaped metadata header, never email body HTML."""
+    subject, recipient, kind = 'Saved email', 'Recipient unavailable', 'Email'
+    try:
+        if path.resolve().parent != path.parent.resolve():
+            raise OSError('Outbox entry points outside its folder')
+        with path.open(encoding='utf-8', errors='replace') as message:
+            prefix = message.read(8192)
+        header = re.match(r"\s*<p\b[^>]*>To:\s*([^<]*)<br\s*/?>\s*Subject:\s*([^<]*)</p>",
+                          prefix, flags=re.IGNORECASE)
+        if header:
+            recipient = ' '.join(unescape(header[1]).split())[:320] or recipient
+            subject = ' '.join(unescape(header[2]).split())[:300] or subject
+            if subject.startswith('Your BoardCast code:'):
+                subject, kind = 'Your BoardCast verification code', 'Verification'
+            elif subject.startswith('BoardCast submission rejected:'):
+                kind = 'Submission update'
+            elif subject.startswith('Starting soon:'):
+                kind = 'Event reminder'
+            elif subject.startswith('Campus Weekly preview:'):
+                kind = 'Review preview'
+            elif subject.startswith('Campus Weekly'):
+                kind = 'Newsletter'
+        saved = datetime.fromtimestamp(path.stat().st_mtime, ZoneInfo(config.TIMEZONE))
+        saved_at, saved_label = saved.isoformat(), saved.strftime('%d %b %Y, %I:%M %p').lstrip('0') + ' MYT'
+    except OSError:
+        saved_at, saved_label = '', 'Saved time unavailable'
+    return {'name': path.name, 'subject': subject, 'recipient': recipient, 'kind': kind,
+            'saved_at': saved_at, 'saved_label': saved_label}
 
 
 @router.get('/demo/outbox', response_class=HTMLResponse)
@@ -192,7 +231,8 @@ def demo_outbox(message: str = ''):
     filenames = [p.name for p in files]
     selected = message if message in filenames else (filenames[0] if filenames else None)
     return HTMLResponse(issue_builder.env.get_template('outbox.html').render(
-        files=filenames, selected=selected, demo_switcher=config.LOCAL_MODE, demo_view='outbox'))
+        files=[_outbox_summary(path) for path in files], selected=selected,
+        demo_switcher=config.LOCAL_MODE, demo_view='outbox'))
 
 
 @router.get('/demo/outbox/{filename}', response_class=HTMLResponse)

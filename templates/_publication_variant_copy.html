@@ -1,0 +1,20 @@
+{# Titles are supplied by the article heading; keep facts and actions in the body. #}
+{% set d = item.data %}
+{% if item.type == 'event' %}
+<p class="pv-facts" style="margin:0 0 12px;font-weight:bold;">{{ d.date|nice_date }}{% if d.start_time %}, {{ d.start_time|hm }}{% if d.end_time %}–{{ d.end_time|hm }}{% endif %}{% endif %}<br>{{ d.venue or 'Venue TBC' }}{% if d.fee and d.fee|trim not in ['-', '–', '—'] %} · {{ d.fee }}{% endif %}</p>
+{% if d.organiser %}<p style="margin:0 0 12px;">By {{ d.organiser }}</p>{% endif %}
+{% elif item.type == 'achievement' %}
+<p style="margin:0 0 12px;"><strong>{{ d.result }}</strong> — {{ d.team }} at {{ d.competition }}.</p>
+{% else %}
+{% if d.deadline %}<p class="pv-facts" style="margin:0 0 12px;font-weight:bold;">Closes {{ d.deadline|nice_date }}</p>{% endif %}
+{% if d.organiser %}<p style="margin:0 0 12px;">By {{ d.organiser }}</p>{% endif %}
+{% endif %}
+{% if item.description or d.summary %}<p style="margin:0 0 12px;">{{ (item.description or d.summary)|linkify_description(variant_design.accent_color) }}</p>{% endif %}
+<p class="pv-actions" style="margin:0;">
+{% if item.type == 'event' %}
+{% if d.registration and d.registration.link %}<a href="{{ base }}/r/{{ item.id }}{{ save_q }}" style="color:{{ variant_design.accent_color }};font-weight:bold;">{{ 'Register here' if d.registration.required else 'More info here' }}</a>{% endif %}
+{% if d.date and d.start_time %}{% if d.registration and d.registration.link %}<span aria-hidden="true"> · </span>{% endif %}<a href="{{ base }}/cal/{{ item.id }}.ics{{ save_q }}" style="color:{{ variant_design.accent_color }};font-weight:bold;">Add to calendar</a>{% endif %}
+{% elif item.type == 'achievement' %}
+{% if d.instagram_url and d.instagram_url is safe_instagram %}<a href="{{ d.instagram_url }}" rel="noopener noreferrer" style="color:{{ variant_design.accent_color }};font-weight:bold;">View on Instagram</a>{% endif %}
+{% elif d.action_link %}<a href="{{ base }}/r/{{ item.id }}{{ save_q }}" style="color:{{ variant_design.accent_color }};font-weight:bold;">Find out more</a>{% endif %}
+</p>

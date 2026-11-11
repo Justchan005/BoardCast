@@ -2,27 +2,34 @@
 {% block title %}Publication review · BoardCast{% endblock %}
 {% block head %}
 {% if client_id %}<script src="https://accounts.google.com/gsi/client" async defer></script>{% endif %}
-<link rel="stylesheet" href="/static/newsletter-editor.css?v=20261110-1">
-<link rel="stylesheet" href="/static/newsletter-theme-editor.css?v=20261110-1">
-<link rel="stylesheet" href="/static/newsletter-library.css?v=20261110-1">
-<script src="/static/staff.js?v=20261110-1" defer></script><script src="/static/newsletter-theme-editor.js?v=20261110-1" defer></script><script src="/static/newsletter-library.js?v=20261110-1" defer></script><script src="/static/newsletter.js?v=20261110-9" defer></script><script src="/static/review.js?v=20261110-4" defer></script>
+<link rel="stylesheet" href="/static/newsletter-editor.css?v=20261111-ui1">
+<link rel="stylesheet" href="/static/newsletter-theme-editor.css?v=20261111-ui1">
+<link rel="stylesheet" href="/static/newsletter-library.css?v=20261111-ui1">
+<link rel="stylesheet" href="/static/admin-ui.css?v=20261111-visual2">
+<link rel="stylesheet" href="/static/agent.css?v=20261113-1">
+<script src="/static/staff.js?v=20261113-2" defer></script><script src="/static/newsletter-theme-editor.js?v=20261111-ui1" defer></script><script src="/static/newsletter-library.js?v=20261110-1" defer></script><script src="/static/newsletter.js?v=20261111-visual2" defer></script><script src="/static/brief.js?v=20261113-1" defer></script><script src="/static/review.js?v=20261113-1" defer></script>
 {% endblock %}
 {% block topbar_right %}<div class="row"><span id="who" class="muted">Staff sign-in</span><button id="signout" class="text-button" type="button" hidden>Switch account</button></div>{% endblock %}
 {% block content %}
 <main class="wrap review-wrap">
 {% with default_email='studentaffairs.demo@apu.edu.my' %}{% include '_staff_signin.html' %}{% endwith %}
 <section id="app" hidden>
-  <header class="page-heading"><div><span class="eyebrow">CAMPUS WEEKLY / EDITORIAL DESK</span><h1>Publication review</h1><p class="muted">Compare the source. Check the copy. Approve with confidence.</p></div>
-  <nav class="row" aria-label="Staff pages"><a class="btn secondary" href="/admin/club">Report</a><button id="refresh" class="btn secondary" type="button">Refresh</button></nav></header>
+  <header class="page-heading"><div><h1>Publication review</h1><p class="muted">Compare the source. Check the copy. Approve with confidence.</p></div>
+  <nav class="row" aria-label="Staff pages"><a class="btn secondary" href="/admin/insights">Insights</a><a class="btn secondary" href="/admin/club">Report</a><button id="refresh" class="btn secondary" type="button">Refresh</button></nav></header>
   <p id="notice" class="alert" role="status" hidden></p>
   <section id="issue-card" class="issue-bar" hidden>
-    <div><span class="eyebrow">NEXT EDITION</span><p id="issue-status" class="muted">No preview yet.</p></div>
-    <div class="row"><a id="issue-link" class="btn secondary" href="#" target="_blank" rel="noopener" hidden>Read edition</a><button id="hold" class="btn danger" type="button" disabled>Hold issue</button>
+    <div><h2 id="issue-heading">Prepare your first edition</h2><p id="issue-status" class="muted">No preview yet.</p></div>
+    <div class="row issue-actions"><a id="issue-link" class="btn secondary" href="#" target="_blank" rel="noopener" hidden>Read edition</a><button id="hold" class="btn danger" type="button" disabled>Hold issue</button>
     {% if local_mode %}<button id="build-preview" class="btn secondary" type="button">Build local preview</button><button id="publish-local" class="btn" type="button" disabled>Publish to local outbox</button><a href="/demo/outbox" class="text-link" target="_blank">Open outbox</a>{% endif %}</div>
+    <p id="issue-next-step" class="issue-note"></p>
     {% if local_mode %}<small class="muted issue-note">Local demo: emails are saved on this computer. The preview includes approved items from today onward.</small>{% endif %}
   </section>
+  <section id="newsletter-change-bar" class="newsletter-change-bar" aria-label="Unsaved template changes" hidden>
+    <p id="newsletter-change-message" role="status" aria-live="polite"></p>
+    <div class="row"><button id="newsletter-save-top" class="btn" type="button">Save template</button><button id="newsletter-discard" class="btn secondary" type="button">Discard changes</button></div>
+  </section>
   <details id="newsletter-designer" class="newsletter-designer" hidden>
-    <summary><span class="newsletter-summary-title">Newsletter template <span id="newsletter-current" class="newsletter-current">Classic</span></span><span class="newsletter-summary-action">Choose &amp; preview</span></summary>
+    <summary><span class="newsletter-summary-title">Newsletter template <span id="newsletter-current" class="newsletter-current">Classic</span><span id="newsletter-dirty-marker" class="newsletter-dirty-marker" hidden>Unsaved changes</span></span><span class="newsletter-summary-action">Choose &amp; preview</span></summary>
     <div class="newsletter-designer-body">
       <div class="newsletter-intro"><div><h2>Choose the look of Campus Weekly.</h2><p class="muted">Pick a layout for the email and web edition. Preview it with your approved content before saving.</p></div><span id="newsletter-scope" class="pill pending">For future editions</span></div>
       <fieldset class="newsletter-choices"><legend class="sr-only">Newsletter template</legend>
@@ -31,6 +38,12 @@
         </label>
         <label class="newsletter-choice"><input type="radio" name="newsletter-template" value="newspaper">
           <span class="newsletter-choice-content"><span class="template-thumb template-thumb-newspaper" aria-hidden="true"><span class="thumb-mast">Campus Weekly</span><span class="thumb-front"><span class="thumb-photo"></span><span class="thumb-story"><b></b><i></i><i></i><i></i></span></span><span class="thumb-news-columns"><span class="thumb-story"><b></b><i></i><i></i></span><span class="thumb-story"><b></b><i></i><i></i></span><span class="thumb-story"><b></b><i></i><i></i></span></span></span><span class="template-choice-title">Newspaper</span><span class="template-choice-description">A lead story with its poster, followed by columns of campus news.</span></span>
+        </label>
+        <label class="newsletter-choice"><input type="radio" name="newsletter-template" value="spotlight">
+          <span class="newsletter-choice-content"><span class="template-thumb template-thumb-spotlight" aria-hidden="true"><span class="thumb-mast">Campus Weekly</span><span class="spotlight-thumb-lead"><span class="thumb-photo"></span><span class="thumb-story"><b></b><i></i><i></i></span></span><span class="spotlight-thumb-support"><span></span><span></span></span></span><span class="template-choice-title">Spotlight</span><span class="template-choice-description">A bold lead poster and story, with a visual grid of supporting stories.</span></span>
+        </label>
+        <label class="newsletter-choice"><input type="radio" name="newsletter-template" value="bulletin">
+          <span class="newsletter-choice-content"><span class="template-thumb template-thumb-bulletin" aria-hidden="true"><span class="thumb-mast">Campus Weekly</span><span class="bulletin-thumb-row"><span class="thumb-photo"></span><span class="thumb-story"><b></b><i></i></span></span><span class="bulletin-thumb-row"><span class="thumb-photo"></span><span class="thumb-story"><b></b><i></i></span></span><span class="bulletin-thumb-row"><span class="thumb-photo"></span><span class="thumb-story"><b></b><i></i></span></span></span><span class="template-choice-title">Bulletin</span><span class="template-choice-description">Compact rows with a poster beside each story. Easy to scan a busy week.</span></span>
         </label>
         <label class="newsletter-choice"><input type="radio" name="newsletter-template" value="custom">
           <span class="newsletter-choice-content"><span class="template-thumb template-thumb-custom" aria-hidden="true"><span class="thumb-custom-title"><span>⠿</span> Your title here</span><span class="thumb-custom-row"><span class="thumb-custom-picture"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="5" width="24" height="22" rx="3"/><circle cx="12" cy="12" r="2"/><path d="m5 23 7-7 5 5 4-4 7 7"/></svg></span><span class="thumb-custom-copy"><b>⠿ Story title</b><i></i><i></i><i></i></span></span><span class="thumb-custom-add">+ Arrange it your way</span></span><span class="template-choice-title">Custom</span><span class="template-choice-description">Build your own theme. Drag title, picture and text placeholders into place.</span></span>
@@ -50,21 +63,21 @@
             <div class="editor-colour-row"><label for="newsletter-text-color">Text</label><span class="editor-colour-field"><input id="newsletter-text-color" type="color" value="#1b1b1b"><input id="newsletter-text-color-value" type="text" value="#1B1B1B" maxlength="7" pattern="#[0-9A-Fa-f]{6}" aria-label="Text hex colour" spellcheck="false"></span></div>
             <div class="editor-colour-row"><label for="newsletter-accent-color">Accent &amp; links</label><span class="editor-colour-field"><input id="newsletter-accent-color" type="color" value="#0b7bb5"><input id="newsletter-accent-color-value" type="text" value="#0B7BB5" maxlength="7" pattern="#[0-9A-Fa-f]{6}" aria-label="Accent hex colour" spellcheck="false"></span></div>
           </fieldset>
-          <label for="newsletter-columns">Story columns</label><select id="newsletter-columns"><option value="1">One column</option><option value="2">Two columns</option><option value="3">Three columns</option></select>
-          <p class="editor-field-note">Email uses up to two columns. All layouts stack on mobile.</p>
+          <div id="newsletter-columns-field"><label for="newsletter-columns">Story columns</label><select id="newsletter-columns"><option value="1">One column</option><option value="2">Two columns</option><option value="3">Three columns</option></select>
+          <p class="editor-field-note">Email uses up to two columns. All layouts stack on mobile.</p></div>
           <div id="newsletter-lead-image-field"><label for="newsletter-lead-image">Lead poster position</label><select id="newsletter-lead-image"><option value="left">Left of the story</option><option value="right">Right of the story</option></select></div>
         </aside>
         <div class="editor-workspace">
         <section id="newsletter-theme-builder" hidden aria-label="Custom theme builder"></section>
         <section class="editor-arrangement" aria-labelledby="editor-arrangement-title">
-          <div class="editor-arrangement-heading"><span class="eyebrow">YOUR EDITION</span><h3 id="editor-arrangement-title">Arrange your stories</h3><p>Drag a story into the lead area or a column. Use its move controls on mobile or with a keyboard.</p></div>
+          <div class="editor-arrangement-heading"><h3 id="editor-arrangement-title">Arrange your stories</h3><p>Drag a story into the lead area or a column. Use its move controls on mobile or with a keyboard.</p></div>
           <p id="newsletter-layout-help" class="editor-layout-help"></p>
           <div id="newsletter-layout-canvas" class="editor-canvas"></div>
         </section>
         </div>
       </div>
       <section id="newsletter-theme-save-panel" aria-label="Save a named theme" hidden></section>
-      <div class="newsletter-controls"><p id="newsletter-status" class="muted" role="status" aria-live="polite"></p><div class="row"><button id="newsletter-preview" class="btn secondary" type="button">Preview newsletter</button><button id="newsletter-save" class="btn" type="button" disabled>Use this template</button></div></div>
+      <div class="newsletter-controls"><p id="newsletter-status" class="muted" role="status" aria-live="polite"></p><div class="row"><button id="newsletter-preview" class="btn secondary" type="button">Preview newsletter</button><button id="newsletter-discard-bottom" class="btn secondary" type="button" disabled>Discard changes</button><button id="newsletter-save" class="btn" type="button" disabled>Use this template</button></div></div>
     </div>
   </details>
   <section id="newsletter-preview-panel" class="newsletter-preview-panel" aria-label="Newsletter layout preview" hidden><p id="newsletter-preview-meta" class="muted"></p><iframe id="newsletter-preview-frame" title="Newsletter layout preview" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe></section>

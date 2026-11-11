@@ -1,0 +1,77 @@
+/* Spotlight is a visual magazine; Bulletin is a compact editorial digest. */
+.publication-variant{background:#eef1f6}
+.pv-paper{max-width:1080px;margin:32px auto 56px;background:var(--pv-paper);color:var(--pv-ink);font-family:var(--pv-body);overflow-wrap:anywhere;border:1px solid var(--pv-line)}
+.pv-paper a{color:var(--pv-accent);text-underline-offset:.2em}
+.pv-paper a:focus-visible{outline:3px solid currentColor;outline-offset:4px}
+.pv-paper ::selection{background:var(--pv-accent);color:var(--pv-accent-ink)}
+.pv-masthead{padding:36px 40px}
+.pv-masthead h1{font-family:var(--pv-headline);font-size:52px;line-height:1.02;letter-spacing:-.035em;margin:0 0 22px;max-width:100%}
+.pv-edition{display:flex;justify-content:space-between;gap:16px;font-size:14px;line-height:1.6}
+.pv-edition time{font-variant-numeric:tabular-nums;flex-shrink:0;font-weight:700}
+.pv-masthead>p{font-size:17px;line-height:1.6;max-width:70ch;margin:22px 0 0}
+.pv-spotlight .pv-masthead{background:var(--pv-accent);color:var(--pv-accent-ink)}
+.pv-spotlight .pv-masthead h1{font-size:64px}
+.pv-spotlight .pv-edition{padding-top:18px;border-top:1px solid currentColor}
+.pv-story,.pv-story-main,.pv-copy{min-width:0;max-width:100%}
+.pv-story h2{font-family:var(--pv-headline);font-size:27px;line-height:1.16;letter-spacing:-.025em;margin:0 0 14px;text-wrap:balance}
+.pv-copy{font-size:16px;line-height:1.65}
+.pv-copy>p,.pv-copy>div{max-width:72ch}
+.pv-kind{font-size:13px;line-height:1.5;font-weight:700;color:var(--pv-accent);margin:0 0 16px}
+.pv-artwork{margin:0;background:var(--pv-surface);border:1px solid var(--pv-line)}
+.pv-poster{display:flex;align-items:center;justify-content:center;min-width:0;padding:18px;text-decoration:none}
+.pv-poster img{display:block;max-width:100%;width:auto;height:auto;max-height:300px;object-fit:contain}
+.pv-artwork figcaption{padding:10px 14px;border-top:1px solid var(--pv-line);font-size:12px;line-height:1.5;color:var(--pv-muted)}
+.pv-actions a{display:inline-block;padding-block:7px}
+.pv-actions:empty{display:none}
+.pv-spotlight .pv-lead{margin:32px 40px;background:var(--pv-surface)}
+.pv-spotlight .pv-lead .pv-artwork{border:0;border-bottom:1px solid var(--pv-line)}
+.pv-spotlight .pv-lead .pv-poster{padding:28px;min-height:0}
+.pv-spotlight .pv-lead .pv-poster img{max-height:520px}
+.pv-spotlight .pv-lead .pv-copy{padding:28px 32px;max-width:80ch;margin-inline:auto}
+.pv-spotlight .pv-lead h2{font-size:38px;line-height:1.13}
+.pv-more{margin:40px}
+.pv-section-title{display:flex;align-items:baseline;justify-content:space-between;gap:16px;border-block:1px solid var(--pv-line);padding:18px 0;margin-bottom:28px}
+.pv-section-title h2{font:700 24px/1.25 var(--pv-headline);letter-spacing:-.02em;margin:0}
+.pv-section-title>span{font-size:13px;color:var(--pv-muted);white-space:nowrap}
+.pv-columns{display:grid;grid-template-columns:repeat(var(--pv-columns),minmax(0,1fr));gap:28px}
+.pv-column{min-width:0;display:flex;flex-direction:column;gap:28px}
+.pv-column .pv-poster{height:300px}
+.pv-column .pv-poster img{max-height:264px}
+.pv-column .pv-copy{padding:22px 0}
+.pv-column .pv-story{border-bottom:1px solid var(--pv-line)}
+.pv-column .pv-story:not(.pv-illustrated) .pv-copy{padding-top:18px;border-top:1px solid var(--pv-line)}
+.pv-bulletin{max-width:1000px}
+.pv-bulletin .pv-masthead{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:0 24px;border-bottom:1px solid var(--pv-accent)}
+.pv-bulletin .pv-masthead h1{font-size:42px;margin:0;align-self:center}
+.pv-bulletin .pv-edition{display:flex;flex-direction:column;gap:8px;text-align:left;background:var(--pv-accent);color:var(--pv-accent-ink);padding:18px}
+.pv-bulletin .pv-edition span{font-size:12px}
+.pv-bulletin .pv-masthead>p{grid-column:1/-1;background:var(--pv-surface);padding:16px 18px;max-width:none}
+.pv-bulletin-list{padding:0 40px}
+.pv-bulletin .pv-story{display:grid;grid-template-columns:94px minmax(0,1fr);gap:24px;border-bottom:1px solid var(--pv-line);padding:30px 0}
+.pv-bulletin .pv-story:last-child{border-bottom:0}
+.pv-stamp{display:flex;align-items:flex-start;flex-direction:column;gap:10px;padding-top:3px;font-size:13px;line-height:1.5;color:var(--pv-muted)}
+.pv-stamp strong{display:block;color:var(--pv-accent);font-size:20px;line-height:1.25;max-width:6ch;font-variant-numeric:tabular-nums}
+.pv-bulletin .pv-illustrated .pv-story-main{display:grid;grid-template-columns:116px minmax(0,1fr);gap:24px;align-items:start}
+.pv-bulletin .pv-poster{padding:8px;min-height:140px}
+.pv-bulletin .pv-poster img{max-height:174px}
+.pv-bulletin .pv-artwork figcaption{font-size:11px;padding:8px}
+.pv-bulletin .pv-story h2{font-size:25px;margin-bottom:14px}
+.pv-footer{background:var(--pv-surface);border-top:1px solid var(--pv-line);padding:28px 40px;font-size:14px;line-height:1.65;color:var(--pv-muted)}
+.pv-footer p{margin:0 0 6px;max-width:75ch}
+.pv-footer>a{display:inline-block;margin-top:8px;padding-block:8px;font-weight:700}
+.pv-empty{padding:36px 40px;line-height:1.65}
+.pv-empty h2{font:700 28px/1.2 var(--pv-headline);margin:0 0 16px}
+@media(max-width:760px){
+ .pv-paper{margin:16px}.pv-masthead{padding:28px}.pv-spotlight .pv-masthead h1{font-size:48px}.pv-more{margin:28px}.pv-spotlight .pv-lead{margin:28px}
+ .pv-columns{gap:24px;grid-template-columns:repeat(var(--pv-tablet-columns),minmax(0,1fr))}.pv-column:last-child:nth-child(3){grid-column:1/-1}.pv-column .pv-poster{height:260px}.pv-column .pv-poster img{max-height:224px}
+ .pv-bulletin .pv-masthead{grid-template-columns:minmax(0,1fr) 190px}.pv-bulletin .pv-masthead h1{font-size:34px}.pv-bulletin-list{padding:0 28px}.pv-bulletin .pv-story{grid-template-columns:74px minmax(0,1fr);gap:18px}.pv-bulletin .pv-illustrated .pv-story-main{grid-template-columns:88px minmax(0,1fr);gap:18px}.pv-footer{padding:24px 28px}
+}
+@media(max-width:540px){
+ .pv-paper{margin:0;border:0}.pv-masthead{padding:26px 20px}.pv-spotlight .pv-masthead h1{font-size:42px}.pv-edition{flex-direction:column;gap:6px}.pv-masthead>p{font-size:16px}
+ .pv-spotlight .pv-lead{margin:20px}.pv-spotlight .pv-lead .pv-poster{padding:12px}.pv-spotlight .pv-lead .pv-copy{padding:22px 18px}.pv-spotlight .pv-lead h2{font-size:29px}
+ .pv-more{margin:28px 20px}.pv-section-title h2{font-size:22px}.pv-columns{display:flex;flex-direction:column;gap:28px}.pv-column .pv-poster{height:300px}.pv-column .pv-poster img{max-height:264px}
+ .pv-bulletin .pv-masthead{display:block}.pv-bulletin .pv-masthead h1{font-size:36px;margin-bottom:20px}.pv-bulletin .pv-edition{gap:6px;padding:16px}.pv-bulletin .pv-edition span{font-size:13px}
+ .pv-bulletin-list{padding:0 20px}.pv-bulletin .pv-story{display:block;padding:24px 0}.pv-stamp{flex-direction:row;align-items:baseline;gap:12px;margin-bottom:16px}.pv-stamp strong{max-width:none;font-size:17px}.pv-bulletin .pv-illustrated .pv-story-main{grid-template-columns:80px minmax(0,1fr);gap:16px}.pv-bulletin .pv-story h2{font-size:22px}.pv-bulletin .pv-copy{font-size:15px}.pv-bulletin .pv-artwork figcaption{padding:7px}
+ .pv-footer{padding:24px 20px}.pv-empty{padding:28px 20px}
+}
+@media(max-width:360px){.pv-bulletin .pv-illustrated .pv-story-main{display:block}.pv-bulletin .pv-artwork{max-width:116px;margin-bottom:18px}}

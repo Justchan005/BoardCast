@@ -4,7 +4,7 @@
 {% block content %}
 <main class="wrap wide">
   <header class="page-heading">
-    <div><span class="eyebrow">CAMPUS WEEKLY / THE OUTPUT</span><h1>Outbox preview</h1><p class="muted">See the email students would receive. These messages stay on this computer.</p></div>
+    <div><h1>Outbox preview</h1><p class="muted">See the emails saved for students and clubs. These messages stay on this computer.</p></div>
     <a class="btn secondary" href="/admin?demo=student-affairs">Back to Student Affairs</a>
   </header>
   {% if selected %}
@@ -12,16 +12,21 @@
     <aside class="outbox-messages" aria-label="Saved emails">
       <h2>Saved emails <span class="muted">{{ files|length }}</span></h2>
       <p class="muted">Newest first</p>
-      {% for name in files %}
-      <a href="/demo/outbox?message={{ name|urlencode }}" class="outbox-message"{% if name == selected %} aria-current="true"{% endif %}>
-        <strong>{{ 'Latest email' if loop.first else 'Email ' ~ loop.index }}</strong>
-        <span>{{ name }}</span>
-      </a>
-      {% endfor %}
+      <nav class="outbox-message-list" aria-label="Saved email list" tabindex="0">
+        {% for message in files %}
+        <a href="/demo/outbox?message={{ message.name|urlencode }}" class="outbox-message"{% if message.name == selected %} aria-current="true"{% endif %}>
+          <span>{{ message.kind }}{% if loop.first %} · Latest{% endif %}</span>
+          <strong>{{ message.subject }}</strong>
+          <span>To: {{ message.recipient }}</span>
+          <time{% if message.saved_at %} datetime="{{ message.saved_at }}"{% endif %}>{{ message.saved_label }}</time>
+        </a>
+        {% endfor %}
+      </nav>
     </aside>
     <section class="outbox-preview" aria-label="Email preview">
       <div class="outbox-preview-heading"><h2>Email preview</h2><a href="/demo/outbox/{{ selected|urlencode }}" target="_blank" rel="noopener" class="text-link">Open full email ↗</a></div>
       <iframe src="/demo/outbox/{{ selected|urlencode }}" title="Selected email preview" sandbox="allow-downloads allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>
+      <details class="outbox-file-details"><summary>Saved file details</summary><p class="muted">{{ selected }}</p></details>
     </section>
   </div>
   {% else %}

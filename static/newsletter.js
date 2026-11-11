@@ -2,7 +2,7 @@
 const Newsletter = (() => {
   const $ = id => document.getElementById(id);
   const radios = [...document.querySelectorAll('input[name="newsletter-template"]')];
-  const labels = {classic: 'Classic', newspaper: 'Newspaper', custom: 'Custom'};
+  const labels = {classic: 'Classic', newspaper: 'Newspaper', spotlight: 'Spotlight', bulletin: 'Bulletin', custom: 'Custom'};
   const fontIds = ['georgia', 'times', 'arial', 'verdana'];
   const colorFields = ['paper_color', 'text_color', 'accent_color'];
   const fields = ['headline_font', 'body_font', ...colorFields, 'columns', 'lead_image'];
@@ -10,6 +10,8 @@ const Newsletter = (() => {
   const presetDefaults = {
     classic: {headline_font: 'arial', body_font: 'arial', paper_color: '#FFFFFF', text_color: '#1B1B1B', accent_color: '#0B7BB5', columns: 1, lead_image: 'left'},
     newspaper: {headline_font: 'georgia', body_font: 'georgia', paper_color: '#F7F3E8', text_color: '#23231F', accent_color: '#9D3229', columns: 2, lead_image: 'left'},
+    spotlight: {headline_font: 'georgia', body_font: 'arial', paper_color: '#FFFFFF', text_color: '#1B1B1B', accent_color: '#1F4FD8', columns: 2, lead_image: 'left'},
+    bulletin: {headline_font: 'arial', body_font: 'arial', paper_color: '#FFFFFF', text_color: '#1B1B1B', accent_color: '#1F4FD8', columns: 1, lead_image: 'left'},
     custom: {headline_font: 'arial', body_font: 'arial', paper_color: '#FFFFFF', text_color: '#1B1B1B', accent_color: '#0B7BB5', columns: 1, lead_image: 'left'},
   };
   let defaults = {...presetDefaults};
@@ -57,6 +59,11 @@ const Newsletter = (() => {
   const signature = (value, preset = selected) => JSON.stringify(normalized(value, preset));
   const dirty = () => !preferenceKnown || selected !== baseline() || signature(design) !== signature(baselineDesign(), baseline());
   function blocksPublish() { return initialized && (loading || saving || ThemeLibrary.isSaving() || dirty()); }
+  function discard() {
+    if (busy()) return;
+    contextVersion++; clearPreview(); cleanDrag(); restoreBaseline();
+    status('Changes discarded. ' + savedStatus()); render();
+  }
   function status(message) { $('newsletter-status').textContent = message; }
   function restoreBaseline() { selected = baseline(); design = selected === 'custom' ? normalized(baselineDesign()) : clone(baselineDesign()); ThemeLibrary.syncSelection(selected, design, true); }
   function designLabel(preset, value) { return ThemeLibrary.label(preset, value) || labels[preset]; }
@@ -259,13 +266,22 @@ const Newsletter = (() => {
     for (const field of colorFields) { const hex = $(control(field).id + '-value'); hex.value = values[field]; hex.textContent = values[field]; hex.disabled = busy() || !design; }
     $('newsletter-reset-design').disabled = busy() || !design;
     $('newsletter-theme-builder').hidden = selected !== 'custom';
-    $('newsletter-lead-image-field').hidden = selected === 'custom';
+    $('newsletter-lead-image-field').hidden = ['custom', 'spotlight', 'bulletin'].includes(selected);
+    $('newsletter-columns-field').hidden = selected === 'bulletin';
     ThemeEditor.setDesign(values, busy() || !design);
     $('newsletter-layout-help').textContent = editable()
       ? 'Drag stories between the lead and columns, or use each story’s Move menu and arrow buttons. Save to apply this arrangement to the preview edition.'
       : 'Story arrangement is for this candidate preview only. Saving keeps fonts, colours and column settings for future editions, then resets the arrangement. Existing editions stay unchanged.';
     renderCanvas();
     $('newsletter-save').disabled = busy() || !dirty(); $('newsletter-preview').disabled = busy() || previewing;
+    const hasChanges = initialized && !loading && dirty();
+    $('newsletter-change-bar').hidden = !hasChanges;
+    $('newsletter-dirty-marker').hidden = !hasChanges;
+    $('newsletter-change-message').textContent = saving ? 'Saving template changes…'
+      : 'Unsaved template changes. Save or discard them before building or publishing an edition.';
+    $('newsletter-save-top').disabled = busy() || !dirty();
+    $('newsletter-discard').disabled = busy() || !dirty();
+    $('newsletter-discard-bottom').disabled = busy() || !dirty();
     ThemeLibrary.setDraft({template: selected, design: futureDesign(normalized(design)), locked: busy()});
     onStateChange();
   }
@@ -326,7 +342,7 @@ const Newsletter = (() => {
       const previous = $('newsletter-preview-frame'), frame = previous.cloneNode(false);
       frame.removeAttribute('srcdoc'); previous.replaceWith(frame); frame.srcdoc = result.html;
       const count = Number(result.item_count) || 0;
-      $('newsletter-preview-meta').textContent = labels[choice] + (design ? ' · Custom design' : '') + ' · ' + count + (count === 1 ? ' item' : ' items') + (result.source === 'edition' ? ' from this edition' : ' from approved submissions');
+      $('newsletter-preview-meta').textContent = 'Email preview · ' + labels[choice] + (design ? ' · Custom design' : '') + ' · ' + count + (count === 1 ? ' item' : ' items') + (result.source === 'edition' ? ' from this edition. The “Read online” link opens the saved web edition.' : ' from approved submissions');
       status(dirty() ? 'Preview only. Choose “Use this template” to save your selection.' : 'Preview of the saved template.');
     } catch (error) {
       if (loginEpoch === epoch && request === previewSerial && !error.stale) { $('newsletter-preview-panel').hidden = true; clearFrame(); $('newsletter-preview-meta').textContent = ''; status('Could not load the preview. ' + error.message); }
@@ -369,6 +385,7 @@ const Newsletter = (() => {
     ThemeLibrary.clearSelection();
     selected = template(radio.value);
     if (selected === 'custom') design = normalized(design || defaults.custom);
+    else design = selected === baseline() ? clone(baselineDesign()) : null;
     changed(labels[selected] + ' selected.');
   });
   $('newsletter-customize').addEventListener('change', () => {
@@ -421,5 +438,8 @@ const Newsletter = (() => {
     },
   });
   $('newsletter-preview').addEventListener('click', preview); $('newsletter-save').addEventListener('click', save);
+  $('newsletter-save-top').addEventListener('click', save);
+  $('newsletter-discard').addEventListener('click', discard);
+  $('newsletter-discard-bottom').addEventListener('click', discard);
   return {init, setIssue, reset, blocksPublish};
 })();

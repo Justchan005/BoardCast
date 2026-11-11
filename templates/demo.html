@@ -1,8 +1,33 @@
 {% extends 'base.html' %}{% block title %}Local demo · BoardCast{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/agent.css?v=20261113-1">{% endblock %}
 {% block topbar_right %}<span class="pill approved">Local demo · emails stay here</span>{% endblock %}
-{% block content %}<main class="wrap wide"><header class="demo-heading"><span class="eyebrow">ONE POSTER. ONE CONNECTED WORKFLOW.</span><h1>From your club<br>to the campus.</h1><p>Try BoardCast from both sides: submit a poster, review it, then open the published edition.</p></header>
+{% block content %}<main class="wrap wide"><header class="demo-heading"><h1>From your club<br>to the campus.</h1><p>A club submits a poster once. Gemini reads it, an agent checks it, Student Affairs decides, and Campus Weekly reaches every subscribed student.</p></header>
+<section class="demo-status" aria-label="What is running on this computer">
+  <div class="demo-status-item"><span class="demo-dot {{ 'on' if ai_configured else 'off' }}" aria-hidden="true"></span><div><strong>Gemini: {{ 'connected' if ai_configured else 'not configured' }}</strong><small>{% if ai_configured %}Model {{ model }}. Poster reading and the pre-review agent make real calls.{% else %}Manual entry and manual review only. Nothing pretends to be AI. Add GEMINI_API_KEY to .env to switch it on.{% endif %}</small></div></div>
+  <div class="demo-status-item"><span class="demo-dot on" aria-hidden="true"></span><div><strong>Email: local outbox</strong><small>Every email is saved as a file on this computer. No message is sent.</small></div></div>
+  <div class="demo-status-item"><span class="demo-dot on" aria-hidden="true"></span><div><strong>Accounts: demo roles</strong><small>A club rep and a Student Affairs officer. Role checks run on the server exactly as in production.</small></div></div>
+</section>
 <div class="demo-grid">
-<a class="card demo-step" href="/submit?demo=club"><span class="step-number">01</span><h2>Club submission</h2><p>Upload a poster, write a description and confirm the details.</p><strong>Open club workspace →</strong><small>Demo account opens automatically</small></a>
-<a class="card demo-step" href="/admin?demo=student-affairs"><span class="step-number">02</span><h2>Student Affairs</h2><p>Compare the poster and student-facing copy. Approve or request corrections.</p><strong>Open review desk →</strong><small>Demo account opens automatically</small></a>
+<a class="card demo-step" href="/submit?demo=club"><span class="step-number">01</span><h2>Club submission</h2><p>Upload a poster, let Gemini fill the details, confirm them and send.</p><strong>Open club workspace →</strong><small>Demo account opens automatically</small></a>
+<a class="card demo-step" href="/admin?demo=student-affairs"><span class="step-number">02</span><h2>Student Affairs</h2><p>Read the agent's brief, compare poster and copy, then approve or return with a reason.</p><strong>Open review desk →</strong><small>Demo account opens automatically</small></a>
 <a class="card demo-step" href="/demo/outbox"><span class="step-number">03</span><h2>Campus Weekly</h2><p>Build a preview in the review desk, publish to the local outbox, and open the email.</p><strong>Open local outbox →</strong><small>No email leaves this computer</small></a>
-</div><div class="card demo-note"><h2>No Enterprise access required for this demo.</h2><p>Enter poster details manually, or use Gemini reading when your existing API key is configured. Manual entry is clearly identified; it does not simulate an AI extraction.</p><p class="muted">Use the switch at the top to try Club, Student Affairs and Outbox preview. The demo accounts are selected for you. Club representatives cannot approve submissions.</p><a href="/subscribe">Try the student subscription page</a></div></main>{% endblock %}
+</div>
+<section class="card demo-flow" aria-labelledby="flow-title"><h2 id="flow-title">Who does what</h2><p class="muted">The model reads and advises. Code enforces the rules. A person makes every publishing decision.</p>
+<ol class="flow-steps">
+  <li><span class="kind kind-human">Human</span><div><strong>Club rep uploads a poster</strong><span>or types the details for a text-only notice.</span></div></li>
+  <li><span class="kind kind-model">Model</span><div><strong>Gemini reads the poster into a fixed schema</strong><span>Missing facts stay empty. QR codes are decoded in code, never guessed by the model.</span></div></li>
+  <li><span class="kind kind-code">Code</span><div><strong>Fixed checks run on the confirmed details</strong><span>Required fields, past dates, link safety, consent. Problems send it back to the club.</span></div></li>
+  <li><span class="kind kind-tool">Agent</span><div><strong>The pre-review agent chooses which checks to run</strong><span>A second read of the poster, a duplicate search, a link check. Fixed rules can overrule its verdict; it cannot approve, reject or edit.</span></div></li>
+  <li><span class="kind kind-human">Human</span><div><strong>Student Affairs approves or returns it</strong><span>Points raised by the agent must be acknowledged before an approval goes through.</span></div></li>
+  <li><span class="kind kind-system">System</span><div><strong>Campus Weekly is built and delivered</strong><span>Gemini only picks which event leads. Every published word comes from approved fields.</span></div></li>
+</ol>
+<p class="row flow-links">{% if latest_item_id %}<a class="btn secondary" href="/admin/trace/{{ latest_item_id }}?demo=student-affairs">See the run trace of the latest submission</a>{% endif %}<a class="btn secondary" href="/admin/insights?demo=student-affairs">Open insights: counts and cost</a><a class="text-link" href="/subscribe">Try the student subscription page</a></p></section>
+<section class="card demo-note"><h2>What is real in this demo, and what is not</h2>
+<div class="table-scroll"><table class="clicks insight-table"><thead><tr><th>Part</th><th>Status here</th></tr></thead><tbody>
+<tr><td>Submission, checks, review desk, run trace, insights, newsletter build, subscribe pages</td><td><span class="pill approved">Live</span> running on this computer</td></tr>
+<tr><td>Poster reading and the pre-review agent</td><td>{% if ai_configured %}<span class="pill approved">Live</span> real Gemini calls{% else %}<span class="pill draft">Off</span> no Gemini credential; manual entry is used and labelled{% endif %}</td></tr>
+<tr><td>Email delivery</td><td><span class="pill pending">Local outbox</span> files on this computer instead of real mail</td></tr>
+<tr><td>Items titled “[SAMPLE]” and the two demo accounts</td><td><span class="pill pending">Test data</span></td></tr>
+<tr><td>Google Cloud deployment, Gemini Enterprise chat, Microsoft Teams bot, Gmail sending</td><td><span class="pill draft">Prepared, not verified end to end</span></td></tr>
+<tr><td>Official APU sender address and an APSpace “Campus activities” feed</td><td><span class="pill draft">Planned</span> needs APU IT</td></tr>
+</tbody></table></div></section></main>{% endblock %}

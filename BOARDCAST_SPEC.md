@@ -1,6 +1,8 @@
 # BoardCast: build spec (v3)
 
 > Current prototype scope and remaining integration checks. See README.md for local startup and deployment instructions.
+>
+> **Newer than this spec:** the pre-review agent, run trace, output checks, insights page and the approval acknowledgement are described in `README.md` and `docs/ARCHITECTURE.md`. Where this spec says token or cost accounting is missing, that is no longer true for backend Gemini calls.
 
 **APU Cloud Innovation Hackathon 2026** · Track 2: Intelligent Automation & Digital Transformation
 **Submission date:** 13 Nov 2026, Malaysia time (updated by the project owner)
