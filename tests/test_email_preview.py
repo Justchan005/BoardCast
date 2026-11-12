@@ -184,6 +184,41 @@ class Links(HTMLParser):
         self.urls += [v for k, v in attrs if k in {"src", "href"}]
 
 
+@pytest.mark.parametrize("remote", [False, True])
+def test_classic_email_uses_a_fluid_container_with_outlook_fallback(edition, remote):
+    """The real Gmail adapter must preserve the same fluid wrapper as local previews."""
+    doc = store.get_issue(edition[0])
+    if remote:
+        _, html, _ = email_preview.render(doc)
+    else:
+        issue, plan = issue_builder.from_saved(doc)
+        html = issue_builder.render_email(issue, plan, None)
+
+    class Tables(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.tables, self.comments = [], []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "table":
+                self.tables.append(dict(attrs))
+
+        def handle_comment(self, data):
+            self.comments.append(data)
+
+    parsed = Tables()
+    parsed.feed(html)
+    paper, = [table for table in parsed.tables if table.get("data-newsletter-template") == "classic"]
+    styles = dict(rule.split(":", 1) for rule in paper["style"].split(";") if rule)
+    assert paper["width"] == "100%"
+    assert styles["width"] == "100%" and styles["max-width"] == "600px"
+    assert not any(table.get("width") == "600" or "width:600px" in table.get("style", "").split(";")
+                   for table in parsed.tables), "Gmail must never see a fixed-width 600px table"
+    assert any(comment.startswith("[if mso]") and 'width="600"' in comment for comment in parsed.comments)
+    assert "[if mso]></td></tr></table><![endif]" in parsed.comments
+    assert "Approved workshop" in html and "Volunteer opportunity" in html
+
+
 @pytest.mark.parametrize("template,custom", [("classic",False),("newspaper",False),("spotlight",False),("bulletin",False),("custom",True),("classic",True),("newspaper",True)])
 def test_remote_email_has_embedded_posters_and_usable_links_in_every_layout(edition, template, custom):
     doc = store.get_issue(edition[0])
