@@ -173,6 +173,9 @@ def latest_preview(email: str = Depends(auth.web_user)):
     issue = {k: doc.get(k) for k in ("id", "week_start", "status", "editor_plan", "editor_report", "delivery_summary")}
     issue.update(newsletter_template=edition["newsletter_template"], newsletter_design=edition["newsletter_design"],
                  layout_editable=issue_builder.layout_editable(doc), layout_items=layout_items, layout_lead_id=lead_id)
+    if config.LOCAL_MODE:
+        from .email_preview import revision
+        issue["email_revision"] = revision(doc)
     return {"issue": issue,
             "magazine_url": f"/m/{doc['id']}"}
 

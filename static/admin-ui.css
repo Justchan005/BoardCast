@@ -1,4 +1,60 @@
 /* Publication actions and previews stay understandable outside the editor. */
+.judge-demo-banner { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:4px 20px; padding:10px 24px; color:#244477; background:#eaf0fb; border-bottom:1px solid #c8d6ed; }
+.judge-demo-banner p { flex:1 1 500px; margin:0; font-size:13px; line-height:1.6; }
+.judge-demo-banner form { margin:0; flex:none; }
+.judge-demo-exit { display:inline-block; padding:9px 4px; min-height:40px; background:transparent; border:0; font:inherit; font-size:13px; font-weight:600; color:#1c4280; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+.judge-demo-exit:hover { color:#102b59; }
+.demo-heading .hosted-start-note { margin-top:16px; max-width:75ch; font-size:14px; line-height:1.6; color:#42567b; }
+@media(max-width:600px) {
+  .judge-demo-banner { padding:10px 16px; gap:2px 12px; }
+  .judge-demo-banner p { flex-basis:100%; }
+  .judge-demo-banner form { margin-left:auto; }
+  .judge-demo-exit { min-height:44px; }
+}
+.real-email-panel { background:#fff; border:1px solid var(--line); border-radius:12px; margin:-10px 0 26px; }
+.real-email-panel>summary { cursor:pointer; display:flex; align-items:center; flex-wrap:wrap; gap:10px 18px; padding:18px 22px; min-height:60px; font-weight:600; list-style:none; }
+.real-email-panel>summary::-webkit-details-marker { display:none; }
+.real-email-panel>summary:after { content:''; width:8px; height:8px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; transform:rotate(45deg); margin-left:auto; margin-right:3px; }
+.real-email-panel[open]>summary:after { transform:rotate(225deg); }
+.real-email-panel[open]>summary { border-bottom:1px solid var(--line); }
+.real-email-summary-state { color:#3b557b; font-size:13px; font-weight:400; }
+.real-email-body { padding:22px; }
+.real-email-intro { max-width:76ch; margin:0 0 18px; }
+.real-email-connection-row { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px 24px; padding-bottom:20px; border-bottom:1px solid var(--line); }
+.real-email-connection-row>p { flex:1 1 310px; max-width:68ch; margin:0; font-size:14px; }
+.real-email-connection-row .row { gap:14px; }
+.real-email-selected { margin:20px 0 16px; font-weight:600; overflow-wrap:anywhere; }
+.real-email-form { max-width:760px; }
+.real-email-address { max-width:470px; }
+.real-email-address label { display:block; margin-bottom:6px; }
+.real-email-address input { width:100%; min-height:46px; }
+.real-email-confirm { margin:14px 0 8px; align-items:center; min-height:44px; }
+.real-email-confirm input { margin-top:0; width:20px; height:20px; }
+.real-email-form>p { font-size:14px; max-width:72ch; margin:4px 0 18px; }
+.real-email-submit-row { display:flex; align-items:center; flex-wrap:wrap; gap:12px 18px; }
+.real-email-submit-row>p { margin:0; font-size:13px; flex:1 1 260px; }
+.real-email-result { margin:18px 0 0; padding-top:16px; border-top:1px solid var(--line); overflow-wrap:anywhere; }
+.real-email-result.ok { color:#17623e; }
+.real-email-result.bad { color:#9d1c28; }
+.real-email-result.warn { color:#805018; }
+.email-setup { max-width:840px; }
+.email-setup h1 { font-size:34px; margin-bottom:12px; }
+.email-setup h2 { font-size:22px; margin-top:30px; }
+.email-setup p,.email-setup li { max-width:73ch; }
+.email-setup li { margin-bottom:12px; }
+.email-setup pre { overflow:auto; max-width:100%; font-size:13px; padding:16px; background:#eef2f8; border-radius:6px; }
+.email-setup code { overflow-wrap:anywhere; }
+@media(max-width:600px) {
+  .real-email-panel>summary { padding:16px; gap:8px 12px; }
+  .real-email-summary-state { flex-basis:calc(100% - 28px); order:2; }
+  .real-email-panel>summary:after { margin-left:auto; }
+  .real-email-body { padding:18px 16px; }
+  .real-email-connection-row .row { width:100%; }
+  .real-email-connection-row .btn { flex:1; }
+  .real-email-address { max-width:none; }
+  .real-email-submit-row .btn { width:100%; }
+  .email-setup h1 { font-size:28px; }
+}
 .issue-bar h2 { margin:0 0 6px; font-size:20px; letter-spacing:-.3px; }
 .issue-bar #issue-next-step { font-size:14px; color:#244477; }
 .newsletter-change-bar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px 24px; padding:16px 20px; margin:-10px 0 20px; border:1px solid #bfcbed; border-radius:10px; background:#fff; }

@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Run BoardCast locally. Emails always stay in the local outbox.')
+    parser = argparse.ArgumentParser(description='Run BoardCast locally. Normal publishing uses the outbox; real preview emails require an explicit send.')
     parser.add_argument('--port', type=int, default=8081)
     parser.add_argument('--offline', action='store_true', help='Disable Gemini calls; use manual poster details.')
     parser.add_argument('--data-dir', type=Path, help='Optional separate demo data directory.')
@@ -55,7 +55,8 @@ def main():
     from backend.main import app
     import uvicorn
     print(f'BoardCast demo: http://127.0.0.1:{args.port}/demo', flush=True)
-    print('Local mode: emails are saved to the local outbox. No Gmail messages are sent.', flush=True)
+    print('Local mode: normal publishing and notifications are saved to the local outbox.', flush=True)
+    print('Optional real email: connect Gmail, then explicitly send one preview from Student Affairs.', flush=True)
     print('Poster reading: manual entry only.' if args.offline else
           'Poster reading: uses your configured Gemini credentials; manual entry is always available.', flush=True)
     uvicorn.run(app, host='127.0.0.1', port=args.port)

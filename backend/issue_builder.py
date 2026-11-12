@@ -24,6 +24,7 @@ from .checks import _as_date, _as_time, description_urls, instagram_link_problem
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 env = Environment(loader=FileSystemLoader(TEMPLATES), autoescape=select_autoescape(["html"]))
+env.globals["hosted_demo"] = config.HOSTED_DEMO
 
 # Template filenames are selected only from this allowlist, never from saved/user input.
 NEWSLETTER_TEMPLATES = (

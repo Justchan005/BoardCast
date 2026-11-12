@@ -4,14 +4,14 @@
 <main class="wrap">
   <form class="card stack" method="post" action="/subscribe">
     <h1 style="font-size:32px">Every APU event, once a week</h1>
-    <p class="muted" style="margin:0">Campus Weekly arrives every Monday at 8am: the week's club events, campus wins and opportunities, as submitted by APU clubs and approved by Student Affairs. No daily emails.</p>
+    <p class="muted" style="margin:0">{% if hosted_demo %}Try subscribing to Campus Weekly with a sample APU address. Verification codes and newsletters go to the shared demo outbox; no real email is sent.{% else %}Campus Weekly arrives every Monday at 8am: the week's club events, campus wins and opportunities, as submitted by APU clubs and approved by Student Affairs. No daily emails.{% endif %}</p>
     {% if error %}<p class="alert bad" role="alert">{{ error }}</p>{% endif %}
     <div>
-      <label for="email">APU email</label>
-      <input id="email" name="email" type="email" required placeholder="tp012345@mail.apu.edu.my" autocomplete="email">
+      <label for="email">{{ 'Sample APU email' if hosted_demo else 'APU email' }}</label>
+      <input id="email" name="email" type="email" required placeholder="{{ 'judge.demo@mail.apu.edu.my' if hosted_demo else 'tp012345@mail.apu.edu.my' }}" autocomplete="{{ 'off' if hosted_demo else 'email' }}">
     </div>
-    <button class="btn" type="submit">Send my code</button>
-    <p class="muted" style="margin:0">We'll email a 6-digit code to confirm it's you. BoardCast never asks for your password.</p>
+    <button class="btn" type="submit">{{ 'Save code to demo outbox' if hosted_demo else 'Send my code' }}</button>
+    <p class="muted" style="margin:0">{% if hosted_demo %}Use the 6-digit code from <a href="/demo/outbox" target="_blank" rel="noopener">Outbox preview</a> to complete the subscription. Use sample data only.{% else %}We'll email a 6-digit code to confirm it's you. BoardCast never asks for your password.{% endif %}</p>
   </form>
 </main>
 {% endblock %}
