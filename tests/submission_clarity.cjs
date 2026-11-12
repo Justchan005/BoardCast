@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function fixture(request = async route => route.endsWith('/club') ? {rows: []} : {}) {
+function fixture(request = async route => route.endsWith('/club') ? {rows: []} : {}, hostedDemo = false) {
   const elements = new Map(); let ready;
   class Element {
     constructor() {this.value='';this.checked=false;this.dataset={};this.children=[];this.attributes={};}
@@ -23,7 +23,7 @@ function fixture(request = async route => route.endsWith('/club') ? {rows: []} :
   get('description').setAttribute('aria-describedby','description-count');
   const context = vm.createContext({URLSearchParams,Date,Intl,location:{search:''},
     Staff:{api:request,init:fn=>{ready=fn;},el:(tag,attrs,...children)=>Object.assign(new Element(),attrs,{tag,children})},
-    document:{getElementById:get,querySelectorAll:()=>[]},window:{addEventListener() {}}});
+    document:{body:{dataset:{hostedDemo:String(hostedDemo)}},getElementById:get,querySelectorAll:()=>[]},window:{addEventListener() {}}});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'..','static','submit.js'),'utf8'),context);
   return {get,ready:()=>ready(),input:id=>get('submission-form').oninput({target:{id}})};
 }
@@ -73,5 +73,26 @@ async function run() {
   assert.equal(g.get('description').getAttribute('aria-invalid'),null);
   assert.equal(g.get('description').getAttribute('aria-describedby'),'description-count','Correction preserves existing help');
   console.log('PASS actionable validation messages, field focus and accessible error associations');
+
+  for (const hostedDemo of [false, true]) {
+    const submitted=fixture(async (route, options={})=> {
+      if(route.endsWith('/club'))return {rows:[]};
+      if(options.method==='POST')return {id:'pending',status:'pending',issues:[]};
+      return {poster_url:null};
+    }, hostedDemo);
+    await submitted.ready();
+    await submitted.get('submission-form').onsubmit({preventDefault(){}});
+    const next=submitted.get('saved').children.find(node=>node.tag==='ol');
+    const copy=next.children.map(node=>node.children.join(' ')).join(' ');
+    if(hostedDemo) {
+      assert.match(copy,/Student Affairs reviews it in this demo\./);
+      assert.match(copy,/After approval, build and publish a preview to the demo outbox\./);
+      assert.doesNotMatch(copy,/by email|Monday 8am/);
+    } else {
+      assert.match(copy,/returns it with a reason by email/);
+      assert.match(copy,/Monday 8am/);
+    }
+  }
+  console.log('PASS hosted submission guidance and unchanged local delivery copy');
 }
 run().catch(error=>{console.error(error);process.exitCode=1;});

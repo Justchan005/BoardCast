@@ -12,7 +12,7 @@ APU Cloud Innovation Hackathon 2026 · Track 2: Intelligent Automation & Digital
 | `docs/evidence/` | Output checks and run logs generated from real runs |
 | `BOARDCAST_SPEC.md` | The original build spec (this README is newer where they differ) |
 
-**Status.** The whole workflow runs on a laptop with a Gemini API key: submission portal, poster reading, pre-review agent, review desk, run trace, insights, newsletter build and a local email outbox. Google Cloud deployment, Gmail sending, the Gemini Enterprise chat surface and the Teams bot have scripts and local tests but are not verified end to end. `/demo` shows the same list inside the app.
+**Status.** The whole workflow runs on a laptop with a Gemini API key: submission portal, poster reading, pre-review agent, review desk, run trace, insights, newsletter build and a local email outbox. Student Affairs can also explicitly send a newsletter preview to one chosen address through a connected Gmail sender. That transport has mocked tests; live Gmail delivery, Google Cloud deployment, the Gemini Enterprise chat surface and the Teams bot are not verified end to end. `/demo` shows the same distinction inside the app.
 
 ---
 
@@ -181,6 +181,7 @@ the same Firestore-compatible storage format when running in the cloud.
 | Web magazine | `/m/{issue_id}` | Everyone |
 | Review queue with source poster, full fields, student-copy preview, inline rejection reason and stale-version checks | `/admin` (Google sign-in; demo roles locally) | Student Affairs, club reps within their permissions |
 | Preview/publish controls and rendered email outbox | `/admin`, `/demo/outbox` | Local demo users; production publishing remains scheduled |
+| Explicit real email preview to one recipient | `/admin` → **Send real email preview**; setup at `/admin/email-setup` | Student Affairs; a connected Gmail sender is required |
 | Club report: items, status, rejection reasons, Register / calendar clicks, reminders set | `/admin/club` (Google sign-in) | Club reps (own club), Student Affairs (all) |
 | Rejection email: title, reason, and how to correct and resubmit | `templates/rejection_email.html` | The original uploader |
 | 1-hour event reminder | `templates/reminder_email.html`, hourly `POST /reminders/run` | Students who clicked Register / Add to calendar in their email |
@@ -246,7 +247,9 @@ with the title, submission ID, reason, and correction/resubmission instructions.
 rejection does not send another email. A delivery failure keeps the rejection and reason saved,
 shows a warning to the reviewer, and offers Student Affairs a **Retry rejection email** button in
 the club report. Correcting/resubmitting clears the old rejection details; a later rejection gets
-its own notification. In LOCAL_MODE every email goes to the HTML outbox, even when Gmail credentials exist.
+its own notification. In LOCAL_MODE these notifications and normal newsletter publishing go to the
+HTML outbox, even when Gmail credentials exist. Only the separate, explicitly confirmed
+**Send real email preview** action contacts Gmail.
 
 ---
 
@@ -261,7 +264,9 @@ its own notification. In LOCAL_MODE every email goes to the HTML outbox, even wh
 Use Python 3.12 and the installed requirements. The local launcher binds only to loopback,
 uses the existing `local_data/`, and seeds missing demo roles/subscriber without replacing
 existing submissions. Firestore becomes `local_data/db.json`, posters stay in `local_data/posters/`,
-and **every email is an HTML outbox file**, regardless of configured Gmail credentials.
+and **normal publishing and notifications are HTML outbox files**, regardless of configured Gmail
+credentials. The separate real-email preview action is optional and sends only when Student Affairs
+chooses a recipient and confirms the send.
 
 ```bash
 python -m venv .venv
@@ -291,12 +296,57 @@ and `GEMINI_API_KEY` or `GOOGLE_API_KEY`). Gemini Enterprise access is not requi
 | Monday send | `curl -X POST localhost:8081/issues/send` → one email per subscriber in the outbox |
 | Retry started delivery | `curl -X POST localhost:8081/issues/retry` → only eligible unsent recipients |
 | Read local emails | http://127.0.0.1:8081/demo/outbox |
+| Send one real preview email | `/admin` → **Send real email preview**; connect Gmail using `/admin/email-setup` |
 | Reminders | `curl -X POST localhost:8081/reminders/run` |
 | Chat agent | `agent/boardcast_agent/.env`: `GOOGLE_GENAI_USE_VERTEXAI=FALSE`, `GOOGLE_API_KEY=...`, `BOARDCAST_API_URL=http://localhost:8081`, `DEV_USER_EMAIL=clubrep.demo@mail.apu.edu.my`; then `cd agent && adk web` |
 
 Without a Gemini key, use the manual submission path. The editor uses a deterministic spotlight
 fallback and source-based copy. Publishing changes item and delivery statuses; keep your existing
 `local_data/` intact unless you deliberately want to discard your demo data.
+
+## Send a real newsletter preview from your laptop
+
+This optional action emails the selected edition to **one address entered by Student Affairs**.
+It does not publish the edition, change its items, add a subscriber, or email the subscriber list.
+Normal local publishing, subscription codes, return notifications and reminders continue to use
+the HTML outbox. The Gemini API key controls AI features; Gmail uses a separate OAuth connection,
+not a Gmail password or a Gemini key. The `--offline` flag disables Gemini, not this explicitly
+requested email action; a real send still needs internet and a connected Gmail sender.
+
+1. Install the updated backend requirements in your virtual environment:
+   `python -m pip install -r backend/requirements.txt`.
+2. Follow [Google's Gmail desktop setup guide](https://developers.google.com/workspace/gmail/api/quickstart/python):
+   in the sender's Google Cloud project, enable the **Gmail API**. Configure Google Auth Platform
+   branding/audience and create an OAuth client of type **Desktop app**. For an External app in
+   Testing, add the sender's Google account as a test user. A managed Workspace account may require
+   its administrator's approval.
+3. Download that Desktop OAuth client JSON into the project root as `credentials.json`.
+   Run `python -m scripts.get_gmail_token` using the project's virtual environment. In the browser,
+   choose the Gmail account that will send previews and grant the send permission. The helper
+   writes private `token.json`; it does not send email. Neither JSON file belongs in Git.
+4. Restart BoardCast. Open `/admin/email-setup` for the in-app guide, then go to Student Affairs,
+   expand **Send real email preview**, and choose **Refresh connection**. The default root-level
+   `token.json` is loaded automatically; no Gmail environment setting is needed for that path.
+5. Build a local preview from approved submissions and save any template changes. Enter one
+   recipient address, tick **Send this preview to the address above**, and click **Send real email**.
+
+You can also send a completed edition's saved copy. Held or unfinished editions cannot be emailed.
+Posters are embedded as CID image attachments, so recipients do not need access to your laptop.
+Registration links open the approved original destinations. Local web-edition, calendar and
+subscription-management links are omitted because they would not work on another computer.
+The email is labelled as a preview and does not subscribe its recipient.
+
+For another token location, set `GMAIL_TOKEN_FILE` on the server; relative paths resolve from the
+project root. `GMAIL_TOKEN_JSON`, when nonempty, takes precedence over the token file. Keep both
+credentials and these settings server-side. The UI reports whether a configuration is present;
+Google validates access at send time. [Testing-mode OAuth grants can expire](https://developers.google.com/identity/protocols/oauth2#expiration),
+so reconnect if Google rejects the saved credentials.
+
+Each edition revision and recipient has a durable send receipt. Repeated clicks do not resend a
+copy that Gmail accepted or whose outcome is uncertain. After an interrupted request, check the
+sender's Sent folder before taking further action. **Gmail accepted** means the provider accepted
+the request; it does not prove inbox delivery. Live sender sign-in and inbox delivery still need
+to be verified with your account.
 
 ## Run locally against Google Cloud
 

@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: boardcast-judge-demo
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeployTrigger: "off"
+    envVars:
+      - key: HOSTED_DEMO
+        value: "true"
+      - key: LOCAL_MODE
+        value: "true"
+      - key: DEV_MODE
+        value: "true"
+      - key: PYTHON_DOTENV_DISABLED
+        value: "1"
+      - key: PREREVIEW_AUTO
+        value: "false"
+      - key: GOOGLE_GENAI_USE_VERTEXAI
+        value: "false"
+      - key: DEMO_ACCESS_CODE
+        generateValue: true
+      - key: DEMO_SESSION_SECRET
+        generateValue: true
+      - key: LINK_SECRET
+        generateValue: true

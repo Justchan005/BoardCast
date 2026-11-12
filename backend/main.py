@@ -26,7 +26,7 @@ from shared.schemas import ItemStatus, ItemType, Role
 
 from pathlib import Path
 
-from . import audit, auth, checks, config, delivery, extract, insights, issue_builder, mailer, prereview, reminders, reviews, runlog, store, tokens, trace, web, submission
+from . import audit, auth, checks, config, delivery, email_preview, extract, insights, issue_builder, mailer, prereview, reminders, reviews, runlog, store, tokens, trace, web, submission
 from .ics import build_ics
 from .qr_rules import apply_qr_links
 
@@ -35,7 +35,14 @@ app.include_router(web.router)
 app.include_router(submission.router)
 app.include_router(runlog.router)
 app.include_router(insights.router)
+app.include_router(email_preview.router)
+# Windows registry associations can label .js as text/plain. Serve scripts with
+# their actual MIME type so browsers can enforce X-Content-Type-Options safely.
+mimetypes.init()
+mimetypes.add_type("text/javascript", ".js")
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent.parent / "static"), name="static")
+from .hosted_demo import install as install_hosted_demo
+install_hosted_demo(app)
 _publisher = None
 
 

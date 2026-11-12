@@ -1,0 +1,16 @@
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends libzbar0 fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY backend/requirements.txt backend/requirements.txt
+RUN pip install --no-cache-dir -r backend/requirements.txt
+COPY shared shared
+COPY backend backend
+COPY templates templates
+COPY prompts prompts
+COPY static static
+# Copy only the hosted entry point and synthetic sample generator.
+COPY scripts/run_hosted_demo.py scripts/seed_roles.py scripts/
+ENV PORT=10000 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHON_DOTENV_DISABLED=1
+RUN useradd --create-home --uid 10001 boardcast
+USER boardcast
+CMD ["python", "-m", "scripts.run_hosted_demo"]

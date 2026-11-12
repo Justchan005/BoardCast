@@ -1,19 +1,24 @@
 (() => {
   const {api, el} = Staff;
   const $ = id => document.getElementById(id);
+  const hostedDemo = document.body?.dataset.hostedDemo === 'true';
+  const demoPlace = hostedDemo ? 'demo' : 'local';
   let me, items = [], status = 'pending', selected = null, issue = null, selectionRequest = 0;
   let publishingBusy = false;
   function updatePublishDisabled() {
     const blocked = Newsletter.blocksPublish();
+    const emailBusy = window.RealEmail?.isSending() || false;
     const canPublish = !!issue && ['preview','partial'].includes(issue.status);
-    if ($('publish-local')) { $('publish-local').disabled = publishingBusy || !canPublish || blocked; $('publish-local').className = canPublish ? 'btn' : 'btn secondary'; }
-    if ($('build-preview')) { $('build-preview').disabled = publishingBusy || blocked; $('build-preview').className = canPublish ? 'btn secondary' : 'btn'; }
+    if ($('publish-local')) { $('publish-local').disabled = publishingBusy || emailBusy || !canPublish || blocked; $('publish-local').className = canPublish ? 'btn' : 'btn secondary'; }
+    if ($('build-preview')) { $('build-preview').disabled = publishingBusy || emailBusy || blocked; $('build-preview').className = canPublish ? 'btn secondary' : 'btn'; }
+    if ($('hold')) $('hold').disabled = publishingBusy || emailBusy || !issue || ['sent','held'].includes(issue.status);
+    window.RealEmail?.update({issue, busy:publishingBusy, blocked});
     if ($('issue-next-step')) $('issue-next-step').textContent = blocked
       ? 'Save or discard your template changes below to continue.'
       : !issue ? 'Approve submissions, then build a preview to check the edition.'
       : issue.status === 'sent' ? 'This edition is already in the outbox. Build the next preview when new submissions are approved.'
       : issue.status === 'held' ? 'Delivery is paused. Build a new preview when you are ready to continue.'
-      : canPublish ? 'Read the edition, then publish it to the local outbox when it is ready.'
+      : canPublish ? 'Read the edition, then publish it to the ' + demoPlace + ' outbox when it is ready.'
       : 'Check the edition’s delivery status before continuing.';
   }
   // Stored values are ISO strings and ids; people read dates, times and plain status words.
@@ -181,7 +186,7 @@
     $('issue-link').hidden = !issue;
     const headings = {sent:'Latest sent edition', held:'Edition on hold', preview:'Preview edition', partial:'Partially delivered edition'};
     $('issue-heading').textContent = issue ? (headings[issue.status] || 'Current edition') : 'Prepare your first edition';
-    if ($('build-preview')) $('build-preview').textContent = issue?.status === 'sent' ? 'Build next preview' : issue ? 'Rebuild local preview' : 'Build local preview';
+    if ($('build-preview')) $('build-preview').textContent = issue?.status === 'sent' ? 'Build next preview' : issue ? 'Rebuild ' + demoPlace + ' preview' : 'Build ' + demoPlace + ' preview';
     if (!issue) {$('issue-status').textContent='No edition built yet.'; $('hold').disabled=true; updatePublishDisabled(); return;}
     const counts=issue.delivery_summary || {};
     const stats=Object.entries(counts).filter(([,v])=>v).map(([k,v])=>v+' '+k).join(' · ');
@@ -194,13 +199,13 @@
     if(counts.unknown) notice('Some delivery outcomes are uncertain. Check the sender’s Sent mailbox before resolving them; these recipients will not be retried automatically.','warn');
   }
   $('hold').onclick=()=>action($('hold'),async()=>{await api('/admin/api/issues/'+issue.id+'/hold',{method:'POST'});notice('Issue held. Further deliveries are stopped.');await loadIssue();});
-  $('build-preview')?.addEventListener('click',()=>action($('build-preview'),async()=>{await api('/admin/api/demo/preview',{method:'POST'});notice('Local preview built from approved submissions.');await loadIssue();}));
-  $('publish-local')?.addEventListener('click',()=>action($('publish-local'),async()=>{const result=await api('/admin/api/demo/publish',{method:'POST'});notice(result.sent ? result.sent+' email(s) saved to the local outbox.' : (result.reason || 'No new email was delivered.'),result.failed?.length?'warn':'ok');await load();}));
+  $('build-preview')?.addEventListener('click',()=>action($('build-preview'),async()=>{await api('/admin/api/demo/preview',{method:'POST'});notice((hostedDemo ? 'Demo' : 'Local') + ' preview built from approved submissions.');await loadIssue();}));
+  $('publish-local')?.addEventListener('click',()=>action($('publish-local'),async()=>{const result=await api('/admin/api/demo/publish',{method:'POST'});notice(result.sent ? result.sent+' email(s) saved to the ' + demoPlace + ' outbox.' : (result.reason || (hostedDemo ? 'No new email preview was saved.' : 'No new email was delivered.')),result.failed?.length?'warn':'ok');await load();}));
   $('refresh').onclick=()=>action($('refresh'),load);
   $('search').oninput=()=>renderList(true);
   const tabs=[...document.querySelectorAll('[role=tab]')];
   function selectTab(button) {status=button.dataset.status; selected=null; for(const b of tabs){b.setAttribute('aria-selected',String(b===button));b.tabIndex=b===button?0:-1;} $('list').setAttribute('aria-labelledby',button.id);renderList(true);}
   tabs.forEach((button,index)=>{button.onclick=()=>selectTab(button);button.onkeydown=ev=>{let next;if(ev.key==='ArrowRight')next=(index+1)%tabs.length;if(ev.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;if(ev.key==='Home')next=0;if(ev.key==='End')next=tabs.length-1;if(next!=null){ev.preventDefault();tabs[next].focus();selectTab(tabs[next]);}};});
-  window.addEventListener('boardcast:signout',()=>{clearTimeout(briefTimer);selectionRequest++;items=[];selected=null;issue=null;Newsletter.reset();});
-  Staff.init(async who=>{me=who;$('app').hidden=false;try{await load();if(me.role==='student_affairs')await Newsletter.init({onStateChange:updatePublishDisabled,onSaved:loadIssue});else Newsletter.reset();}catch(e){if(!e.stale)notice(e.message,'bad');}});
+  window.addEventListener('boardcast:signout',()=>{clearTimeout(briefTimer);selectionRequest++;items=[];selected=null;issue=null;Newsletter.reset();window.RealEmail?.reset();});
+  Staff.init(async who=>{me=who;window.RealEmail?.reset();$('app').hidden=false;try{await load();if(me.role==='student_affairs'){await Newsletter.init({onStateChange:updatePublishDisabled,onSaved:loadIssue});await window.RealEmail?.init(who,updatePublishDisabled);updatePublishDisabled();}else Newsletter.reset();}catch(e){if(!e.stale)notice(e.message,'bad');}});
 })();

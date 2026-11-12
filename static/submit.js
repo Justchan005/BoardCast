@@ -1,5 +1,6 @@
 (() => {
   const {api,el}=Staff, $=id=>document.getElementById(id);
+  const hostedDemo = document.body?.dataset.hostedDemo === 'true';
   let itemId=new URLSearchParams(location.search).get('item'), uploadId=null, objectUrl=null, generation=0;
   let uploading=false, reading=false, saving=false, failedUpload=false, extracted={}, existingPoster=null, sentForReview=false, approvedNow=false;
   // These requirements come from the same server rules used when saving a submission.
@@ -138,8 +139,8 @@
       showIssues(result.issues);
       const next=result.status==='pending'?[el('ol',{class:'next-steps'},
         ...($('app').dataset.aiConfigured==='true'?[el('li',{},'Now: an AI pre-review compares your details with the poster and briefs the reviewer. It cannot approve or change anything.')]:[]),
-        el('li',{},'Next: Student Affairs approves it, or returns it with a reason by email.'),
-        el('li',{},'Then: it goes out in the next Campus Weekly, Monday 8am.'))]:[];
+        el('li',{},hostedDemo?'Student Affairs reviews it in this demo.':'Next: Student Affairs approves it, or returns it with a reason by email.'),
+        el('li',{},hostedDemo?'After approval, build and publish a preview to the demo outbox.':'Then: it goes out in the next Campus Weekly, Monday 8am.'))]:[];
       const saved=$('saved');saved.replaceChildren(el('strong',{},result.status==='pending'?'Sent to Student Affairs.':result.status==='approved'?'Approved and ready for the next edition.':'Saved, but not sent yet. Complete the highlighted details and resubmit.'),el('p',{},'Submission '+result.id+' · '+result.status),...(result.issues.length?[el('a',{href:'#validation-help',class:'text-link'},'Review the details to fix')]:[]),...next,el('a',{href:'/admin/trace/'+encodeURIComponent(result.id),class:'text-link'},'Follow this submission step by step'),' · ',el('a',{href:'/admin',class:'text-link'},'Open review queue'));saved.className='alert '+(result.status==='draft'?'warn':'ok');saved.hidden=false;
       if(result.poster_hidden)notice(result.poster_hidden,'warn');else notice('Your submission has been saved.');
       const item=await api('/admin/api/submissions/'+encodeURIComponent(itemId));existingPoster=item.poster_url;await history();saved.scrollIntoView({behavior:'smooth',block:'start'});

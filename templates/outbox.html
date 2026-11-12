@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
 {% block title %}Outbox preview · BoardCast{% endblock %}
-{% block topbar_right %}<span class="pill approved">Local demo · emails stay here</span>{% endblock %}
+{% block topbar_right %}<span class="pill approved">{{ 'Judge demo · no real email' if hosted_demo else 'Local demo · emails stay here' }}</span>{% endblock %}
 {% block content %}
 <main class="wrap wide">
   <header class="page-heading">
-    <div><h1>Outbox preview</h1><p class="muted">See the emails saved for students and clubs. These messages stay on this computer.</p></div>
+    <div><h1>Outbox preview</h1><p class="muted">{% if hosted_demo %}See the email previews saved by judges in this shared demo. No real email is sent.{% else %}See the emails saved for students and clubs. These messages stay on this computer.{% endif %}</p></div>
     <a class="btn secondary" href="/admin?demo=student-affairs">Back to Student Affairs</a>
   </header>
   {% if selected %}
@@ -30,7 +30,7 @@
     </section>
   </div>
   {% else %}
-  <div class="card empty-state"><h2>Your first edition starts here.</h2><p class="muted">Approve a submission, build a local preview, then publish it to this outbox.</p><a class="btn" href="/admin?demo=student-affairs">Open Student Affairs</a></div>
+  <div class="card empty-state"><h2>Your first edition starts here.</h2><p class="muted">Approve a submission, build a {{ 'demo' if hosted_demo else 'local' }} preview, then publish it to this outbox.</p><a class="btn" href="/admin?demo=student-affairs">Open Student Affairs</a></div>
   {% endif %}
 </main>
 {% endblock %}

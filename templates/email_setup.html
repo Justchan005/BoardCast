@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Connect Gmail for preview emails · BoardCast{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/admin-ui.css?v=20261113-email1">{% endblock %}
+{% block topbar_right %}<a href="/admin?demo=student-affairs" class="text-link">Back to Student Affairs</a>{% endblock %}
+{% block content %}
+<main class="wrap email-setup">
+  <h1>Connect Gmail for preview emails</h1>
+  <p>Connect a Gmail or Google Workspace account once on this computer. Student Affairs can then send a copy of an edition to one chosen email address. Normal local publishing still saves messages to the outbox.</p>
+  <p>The sender is the Google account you choose during the connection step. BoardCast requests permission to send email only; it does not read your mailbox or ask for your Google password.</p>
+  <h2>1 Prepare the Google project</h2>
+  <ol>
+    <li>Open your project in the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer">Google Cloud console</a> and enable the <strong>Gmail API</strong>.</li>
+    <li>Configure <strong>Google Auth platform</strong> branding and audience. For a personal Gmail account, use an external audience. While the app is in testing, add the sender's Google account as a test user. A Workspace organisation may require its administrator's approval.</li>
+    <li>Under <strong>Clients</strong>, create an OAuth client with application type <strong>Desktop app</strong>. Download its JSON file as <code>credentials.json</code> into the BoardCast project folder, beside <code>README.md</code>.</li>
+  </ol>
+  <p>Follow the <a href="https://developers.google.com/workspace/gmail/api/quickstart/python" target="_blank" rel="noopener noreferrer">official Gmail setup instructions</a> if the console labels differ. This setup authorises the sender; Gemini API keys do not grant email access.</p>
+  <h2>2 Connect the sender on this computer</h2>
+  <p>Open PowerShell in the BoardCast project folder. Install the updated backend requirements and run the connection helper:</p>
+  <pre><code>.\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+.\.venv\Scripts\python.exe -m scripts.get_gmail_token</code></pre>
+  <p>A Google sign-in window opens. Choose the intended sender and review the requested send-email permission. On completion, the helper saves <code>token.json</code> in the project folder. Keep both JSON files private; the default filenames are excluded from Git.</p>
+  <p>If you use a custom token location, set <code>GMAIL_TOKEN_FILE</code> on the server and restart BoardCast. An existing <code>GMAIL_TOKEN_JSON</code> setting takes precedence over the file.</p>
+  <h2>3 Send a preview</h2>
+  <ol>
+    <li>Return to <a href="/admin?demo=student-affairs">Student Affairs</a>, expand <strong>Send real email preview</strong>, and select <strong>Refresh connection</strong>.</li>
+    <li>Build a local preview with approved submissions, then check it using <strong>Read edition</strong>. Save any template changes.</li>
+    <li>Enter one recipient address, tick the confirmation and choose <strong>Send real email</strong>. The message is labelled as a preview and the posters are included.</li>
+  </ol>
+  <p>Gmail accepting a message does not guarantee inbox delivery. Check the recipient's inbox or spam folder. If the app reports an uncertain outcome, check the sender's Sent folder before trying again; the app does not automatically resend that preview.</p>
+  <h2>What stays local</h2>
+  <p>The preview does not subscribe its recipient or change an item's publication status. Local-only calendar and web-edition links are omitted; approved registration links open their original destinations. The website remains on this computer.</p>
+  <p>When Google access expires or is revoked, run the connection helper again and refresh the connection. Never paste credentials into the recipient field or share them in screenshots.</p>
+</main>
+{% endblock %}

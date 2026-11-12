@@ -1,13 +1,13 @@
 <section id="signin" class="card stack signin-card">
   <h1 style="font-size:28px">{{ signin_title|default('Sign in to BoardCast') }}</h1>
-  <p class="muted">For club reps and Student Affairs. Use your registered account.</p>
+  <p class="muted">{% if hosted_demo %}Choose a sample account to try the Club or Student Affairs role.{% else %}For club reps and Student Affairs. Use your registered account.{% endif %}</p>
   {% if client_id %}
   <div id="g_id_onload" data-client_id="{{ client_id }}" data-callback="onSignIn" data-auto_prompt="false"></div>
   <div class="g_id_signin" data-type="standard" data-size="large" data-text="signin_with"></div>
   {% endif %}
   {% if dev_mode %}
   <form id="devform" class="stack">
-    <div class="alert warn">Local demo sign-in. Choose a seeded account to try its role.</div>
+    <div class="alert warn">{{ 'Judge demo sign-in. Use a sample account, not a personal address.' if hosted_demo else 'Local demo sign-in. Choose a seeded account to try its role.' }}</div>
     <div><label for="devemail">Demo account</label>
     <input id="devemail" type="email" list="demo-accounts" value="{{ default_email|default('clubrep.demo@mail.apu.edu.my') }}" required autocomplete="off">
     <datalist id="demo-accounts"><option value="clubrep.demo@mail.apu.edu.my"><option value="studentaffairs.demo@apu.edu.my"></datalist></div>

@@ -8,9 +8,10 @@
 {% block web_fonts %}<link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
 {% endblock %}<link rel="stylesheet" href="/static/style.css?v=20261113-2">
+{% if hosted_demo %}<link rel="stylesheet" href="/static/admin-ui.css?v=20261113-hosted1">{% endif %}
 {% block head %}{% endblock %}
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}{% endblock %}" data-hosted-demo="{{ 'true' if hosted_demo else 'false' }}">
 <header class="topbar{% if demo_switcher %} demo-topbar{% endif %}">
   <a class="brand" href="{{ '/demo' if demo_switcher else '/subscribe' }}">
     <span class="brand-mark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/></svg></span>
@@ -19,6 +20,12 @@
   {% if demo_switcher %}{% include '_demo_switcher.html' %}{% endif %}
   <div class="topbar-context">{% block topbar_right %}<span class="muted">Campus Weekly for APU students</span>{% endblock %}</div>
 </header>
+{% if hosted_demo %}
+<aside class="judge-demo-banner" aria-label="Judge demo information">
+  <p><strong>Judge demo</strong> · Shared sample workspace. Changes may reset after inactivity or restart. Do not enter private data.</p>
+  <form method="post" action="/judge/logout"><button class="judge-demo-exit" type="submit">Leave demo</button></form>
+</aside>
+{% endif %}
 {% block content %}{% endblock %}
 </body>
 </html>
