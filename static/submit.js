@@ -138,7 +138,7 @@
       sentForReview=result.status==='pending'||result.status==='approved';approvedNow=result.status==='approved';
       showIssues(result.issues);
       const next=result.status==='pending'?[el('ol',{class:'next-steps'},
-        ...($('app').dataset.aiConfigured==='true'?[el('li',{},'Now: an AI pre-review compares your details with the poster and briefs the reviewer. It cannot approve or change anything.')]:[]),
+        ...($('app').dataset.aiConfigured==='true'?[el('li',{},hostedDemo?'Student Affairs can run AI pre-review to compare the poster and details before deciding.':'Now: an AI pre-review compares your details with the poster and briefs the reviewer. It cannot approve or change anything.')]:[]),
         el('li',{},hostedDemo?'Student Affairs reviews it in this demo.':'Next: Student Affairs approves it, or returns it with a reason by email.'),
         el('li',{},hostedDemo?'After approval, build and publish a preview to the demo outbox.':'Then: it goes out in the next Campus Weekly, Monday 8am.'))]:[];
       const saved=$('saved');saved.replaceChildren(el('strong',{},result.status==='pending'?'Sent to Student Affairs.':result.status==='approved'?'Approved and ready for the next edition.':'Saved, but not sent yet. Complete the highlighted details and resubmit.'),el('p',{},'Submission '+result.id+' · '+result.status),...(result.issues.length?[el('a',{href:'#validation-help',class:'text-link'},'Review the details to fix')]:[]),...next,el('a',{href:'/admin/trace/'+encodeURIComponent(result.id),class:'text-link'},'Follow this submission step by step'),' · ',el('a',{href:'/admin',class:'text-link'},'Open review queue'));saved.className='alert '+(result.status==='draft'?'warn':'ok');saved.hidden=false;

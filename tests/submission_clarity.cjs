@@ -80,15 +80,19 @@ async function run() {
       if(options.method==='POST')return {id:'pending',status:'pending',issues:[]};
       return {poster_url:null};
     }, hostedDemo);
+    submitted.get('app').dataset.aiConfigured='true';
     await submitted.ready();
     await submitted.get('submission-form').onsubmit({preventDefault(){}});
     const next=submitted.get('saved').children.find(node=>node.tag==='ol');
     const copy=next.children.map(node=>node.children.join(' ')).join(' ');
     if(hostedDemo) {
+      assert.match(copy,/Student Affairs can run AI pre-review to compare the poster and details before deciding\./);
+      assert.doesNotMatch(copy,/Now: an AI pre-review/);
       assert.match(copy,/Student Affairs reviews it in this demo\./);
       assert.match(copy,/After approval, build and publish a preview to the demo outbox\./);
       assert.doesNotMatch(copy,/by email|Monday 8am/);
     } else {
+      assert.match(copy,/Now: an AI pre-review compares your details with the poster and briefs the reviewer\. It cannot approve or change anything\./);
       assert.match(copy,/returns it with a reason by email/);
       assert.match(copy,/Monday 8am/);
     }
