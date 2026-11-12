@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
 {% block title %}Outbox preview · BoardCast{% endblock %}
-{% block topbar_right %}<span class="pill approved">{{ 'Judge demo · no real email' if hosted_demo else 'Local demo · emails stay here' }}</span>{% endblock %}
+{% block topbar_right %}<span class="pill approved">{{ 'Judge demo · outbox previews' if hosted_demo else 'Local demo · emails stay here' }}</span>{% endblock %}
 {% block content %}
 <main class="wrap wide">
   <header class="page-heading">
-    <div><h1>Outbox preview</h1><p class="muted">{% if hosted_demo %}See the email previews saved by judges in this shared demo. No real email is sent.{% else %}See the emails saved for students and clubs. These messages stay on this computer.{% endif %}</p></div>
+    <div><h1>Outbox preview</h1><p class="muted">{% if hosted_demo %}See the email previews saved by judges in this shared demo. Publishing saves them here. Owner-only email tests use the separate action in Student Affairs.{% else %}See the emails saved for students and clubs. These messages stay on this computer.{% endif %}</p></div>
     <a class="btn secondary" href="/admin?demo=student-affairs">Back to Student Affairs</a>
   </header>
   {% if selected %}

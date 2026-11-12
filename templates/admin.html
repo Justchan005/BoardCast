@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/static/newsletter-library.css?v=20261111-ui1">
 {% if not hosted_demo %}<link rel="stylesheet" href="/static/admin-ui.css?v=20261113-hosted1">{% endif %}
 <link rel="stylesheet" href="/static/agent.css?v=20261113-1">
-<script src="/static/staff.js?v=20261113-2" defer></script><script src="/static/newsletter-theme-editor.js?v=20261111-ui1" defer></script><script src="/static/newsletter-library.js?v=20261110-1" defer></script><script src="/static/newsletter.js?v=20261111-visual2" defer></script><script src="/static/brief.js?v=20261113-1" defer></script>{% if local_mode and not hosted_demo %}<script src="/static/real-email.js?v=20261113-email1" defer></script>{% endif %}<script src="/static/review.js?v=20261113-hosted1" defer></script>
+<script src="/static/staff.js?v=20261113-2" defer></script><script src="/static/newsletter-theme-editor.js?v=20261111-ui1" defer></script><script src="/static/newsletter-library.js?v=20261110-1" defer></script><script src="/static/newsletter.js?v=20261111-visual2" defer></script><script src="/static/brief.js?v=20261113-1" defer></script>{% if local_mode %}<script src="/static/real-email.js?v=20261113-owner1" defer></script>{% endif %}<script src="/static/review.js?v=20261113-hosted1" defer></script>
 {% endblock %}
 {% block topbar_right %}<div class="row"><span id="who" class="muted">Staff sign-in</span><button id="signout" class="text-button" type="button" hidden>Switch account</button></div>{% endblock %}
 {% block content %}
@@ -22,22 +22,23 @@
     <div class="row issue-actions"><a id="issue-link" class="btn secondary" href="#" target="_blank" rel="noopener" hidden>Read edition</a><button id="hold" class="btn danger" type="button" disabled>Hold issue</button>
     {% if local_mode %}<button id="build-preview" class="btn secondary" type="button">Build {{ 'demo' if hosted_demo else 'local' }} preview</button><button id="publish-local" class="btn" type="button" disabled>Publish to {{ 'demo' if hosted_demo else 'local' }} outbox</button><a href="/demo/outbox" class="text-link" target="_blank">Open outbox</a>{% endif %}</div>
     <p id="issue-next-step" class="issue-note"></p>
-    {% if local_mode %}<small class="muted issue-note">{% if hosted_demo %}Publishing saves email previews in the shared demo outbox. No real email is sent.{% else %}Publishing here saves emails on this computer. Use “Send real email preview” below for a chosen recipient.{% endif %}</small>{% endif %}
+    {% if local_mode %}<small class="muted issue-note">{% if hosted_demo %}Publishing stays in the demo outbox. Owner-only email tests are available below.{% else %}Publishing here saves emails on this computer. Use “Send real email preview” below for a chosen recipient.{% endif %}</small>{% endif %}
   </section>
-  {% if local_mode and not hosted_demo %}
+  {% if local_mode %}
   <details id="real-email-panel" class="real-email-panel" hidden>
-    <summary><span>Send real email preview</span><span id="real-email-connection-label" class="real-email-summary-state">Set up Gmail</span></summary>
+    <summary><span>{{ 'Send test email' if hosted_demo else 'Send real email preview' }}</span><span id="real-email-connection-label" class="real-email-summary-state">{{ 'Owner access required' if hosted_demo else 'Set up Gmail' }}</span></summary>
     <div class="real-email-body">
-      <p class="real-email-intro">Send this edition to one real email address through Gmail. This preview does not publish the edition or add the recipient to your subscribers.</p>
-      <div class="real-email-connection-row"><p id="real-email-connection" class="muted">Connect a Gmail account to send a preview outside this computer.</p><div class="row"><a href="/admin/email-setup" class="text-link" target="_blank" rel="noopener">Gmail setup guide</a><button id="real-email-refresh" class="btn secondary" type="button">Refresh connection</button></div></div>
-      <p id="real-email-selected" class="real-email-selected">No edition selected. Build a local preview first.</p>
+      <p class="real-email-intro">{% if hosted_demo %}The owner can send this edition to the fixed test recipient through Gmail. This does not publish the edition or subscribe the recipient.{% else %}Send this edition to one real email address through Gmail. This preview does not publish the edition or add the recipient to your subscribers.{% endif %}</p>
+      <div class="real-email-connection-row"><p id="real-email-connection" class="muted">{% if hosted_demo %}Unlock owner access to test a real email to the configured recipient.{% else %}Connect a Gmail account to send a preview outside this computer.{% endif %}</p><div class="row">{% if hosted_demo %}<a id="real-email-unlock" href="/judge/owner" class="text-link">Unlock email testing</a>{% else %}<a href="/admin/email-setup" class="text-link" target="_blank" rel="noopener">Gmail setup guide</a>{% endif %}<button id="real-email-refresh" class="btn secondary" type="button">Refresh connection</button></div></div>
+      <p id="real-email-selected" class="real-email-selected">No edition selected. Build a {{ 'demo' if hosted_demo else 'local' }} preview first.</p>
       <form id="real-email-form" class="real-email-form">
-        <div class="real-email-address"><label for="real-email-recipient">Recipient email</label><input id="real-email-recipient" name="recipient" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" maxlength="254" required aria-describedby="real-email-requirement real-email-preview-note"></div>
+        <div class="real-email-address"><label for="real-email-recipient">{{ 'Fixed test recipient' if hosted_demo else 'Recipient email' }}</label><input id="real-email-recipient" name="recipient" type="email" inputmode="email" autocomplete="{{ 'off' if hosted_demo else 'email' }}"{% if hosted_demo %} readonly disabled{% else %} placeholder="name@example.com"{% endif %} maxlength="254" required aria-describedby="real-email-requirement real-email-preview-note"></div>
         <label class="check-label real-email-confirm" for="real-email-confirm"><input id="real-email-confirm" type="checkbox" disabled><span>Send this preview to the address above</span></label>
-        <p id="real-email-preview-note" class="muted">Posters are included in the email. Local-only web edition and calendar links are omitted. Registration links open their original destinations.</p>
-        <div class="real-email-submit-row"><button id="real-email-send" class="btn" type="submit" disabled>Send real email</button><p id="real-email-requirement" class="muted">Build a local preview and connect Gmail first.</p></div>
+        <p id="real-email-preview-note" class="muted">Posters are included in the email. {{ 'Demo-only' if hosted_demo else 'Local-only' }} web edition and calendar links are omitted. Registration links open their original destinations.</p>
+        <div class="real-email-submit-row"><button id="real-email-send" class="btn" type="submit" disabled>{{ 'Send test email' if hosted_demo else 'Send real email' }}</button><p id="real-email-requirement" class="muted">{% if hosted_demo %}Unlock email testing with owner access, then refresh the connection here.{% else %}Build a local preview and connect Gmail first.{% endif %}</p></div>
       </form>
       <p id="real-email-result" class="real-email-result" role="status" aria-live="polite" aria-atomic="true" hidden></p>
+      {% if hosted_demo %}<a id="real-email-open-inbox" class="text-link" target="_blank" rel="noopener" hidden>Open Gmail</a>{% endif %}
     </div>
   </details>
   {% endif %}

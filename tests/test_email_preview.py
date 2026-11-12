@@ -6,6 +6,7 @@ from html.parser import HTMLParser
 from threading import Event
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from googleapiclient.errors import HttpError
 from httplib2 import Response
@@ -23,6 +24,7 @@ TO = "reader@example.com"
 def edition(tmp_path, monkeypatch):
     monkeypatch.setenv("AUDIT_DISABLED", "true")
     monkeypatch.setattr(config, "LOCAL_MODE", True)
+    monkeypatch.setattr(config, "HOSTED_DEMO", False)
     monkeypatch.setattr(config, "DEV_MODE", True)
     monkeypatch.setattr(config, "LOCAL_DATA_DIR", tmp_path)
     monkeypatch.setattr(config, "PUBLIC_BASE_URL", "http://127.0.0.1:8081")
@@ -281,3 +283,166 @@ def test_abandoned_claim_becomes_unknown_instead_of_resending(api, edition, monk
 def test_issue_metadata_contains_review_revision(api, edition):
     result = api.get("/admin/api/preview", headers={"X-Dev-User": SA})
     assert result.json()["issue"]["email_revision"] == payload(edition[0])["expected_revision"]
+
+
+@pytest.fixture
+def hosted_api(edition, monkeypatch):
+    """A trusted server-side test stub supplies the owner's verified middleware state.
+
+    Gate tests separately verify cookie/CSRF checks. This exercises the endpoint's
+    independent owner, role, recipient and receipt safeguards without real OAuth.
+    """
+    monkeypatch.setattr(config, "HOSTED_DEMO", True)
+    monkeypatch.setattr(config, "PUBLIC_BASE_URL", "https://boardcast.example")
+    monkeypatch.setenv("HOSTED_EMAIL_PREVIEW", "true")
+    monkeypatch.setenv("HOSTED_EMAIL_RECIPIENT", "owner@example.com")
+    state = {"owner": False}
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def trusted_owner_state(request, call_next):
+        request.state.hosted_owner = state["owner"]
+        return await call_next(request)
+
+    app.include_router(email_preview.router)
+    with TestClient(app, base_url="https://boardcast.example") as client:
+        yield client, state
+
+
+def test_hosted_locked_status_does_not_read_credentials_or_reveal_owner_inbox(hosted_api, edition, monkeypatch):
+    client, _ = hosted_api
+    def forbidden():
+        raise AssertionError("Locked judge requests must not inspect OAuth configuration")
+    monkeypatch.setattr(mailer, "real_email_status", forbidden)
+    response = client.get("/admin/api/real-email/status", headers={"X-Dev-User": SA, "X-Hosted-Owner": "true"})
+    assert response.status_code == 200
+    assert response.json() == {"configured": False, "owner_required": True, "hosted": True,
+                               "message": "Unlock owner email testing to send a real preview."}
+    assert "owner@example.com" not in response.text and "inbox_url" not in response.text
+    assert not edition[1]
+
+
+@pytest.mark.parametrize("owner_value", [False, "true", 1, None])
+def test_hosted_send_requires_verified_boolean_owner_state(hosted_api, edition, owner_value):
+    client, state = hosted_api
+    state["owner"] = owner_value
+    response = post(client, edition[0], payload(edition[0], recipient="owner@example.com"), **{"X-Hosted-Owner": "true"})
+    assert response.status_code == 403
+    assert not edition[1]
+    assert list(store.db().collection("email_previews").stream()) == []
+
+
+@pytest.mark.parametrize("flag", ["true", "1"])
+def test_hosted_owner_status_discloses_fixed_inbox_only_to_student_affairs(hosted_api, edition, monkeypatch, flag):
+    client, state = hosted_api
+    state["owner"] = True
+    monkeypatch.setenv("HOSTED_EMAIL_PREVIEW", flag)
+    response = client.get("/admin/api/real-email/status", headers={"X-Dev-User": SA})
+    assert response.status_code == 200
+    result = response.json()
+    assert result["configured"] and result["hosted"] and result["owner_required"] is False
+    assert result["fixed_recipient"] == "owner@example.com"
+    assert result["inbox_url"] == "https://mail.google.com/mail/u/0/#inbox"
+    assert client.get("/admin/api/real-email/status", headers={"X-Dev-User": REP}).status_code == 403
+    assert not edition[1]
+
+
+@pytest.mark.parametrize("flag", ["", "false", "treu"])
+def test_hosted_email_feature_requires_explicit_opt_in(hosted_api, edition, monkeypatch, flag):
+    client, state = hosted_api
+    state["owner"] = True
+    monkeypatch.setenv("HOSTED_EMAIL_PREVIEW", flag)
+    response = client.get("/admin/api/real-email/status", headers={"X-Dev-User": SA})
+    assert response.status_code == 200
+    assert not response.json()["configured"] and not response.json()["owner_required"]
+    assert "fixed_recipient" not in response.json() and "inbox_url" not in response.json()
+    assert post(client, edition[0], payload(edition[0], recipient="owner@example.com")).status_code == 404
+    assert not edition[1]
+
+
+@pytest.mark.parametrize("recipient", ["", "bad-secret-config", "first@example.com,second@example.com", "owner@example.com\r\nBcc:other@example.com"])
+def test_hosted_missing_or_invalid_fixed_recipient_fails_closed(hosted_api, edition, monkeypatch, recipient):
+    client, state = hosted_api
+    state["owner"] = True
+    monkeypatch.setenv("HOSTED_EMAIL_RECIPIENT", recipient)
+    response = client.get("/admin/api/real-email/status", headers={"X-Dev-User": SA})
+    assert response.status_code == 200
+    assert not response.json()["configured"]
+    assert "fixed_recipient" not in response.json()
+    assert "bad-secret-config" not in response.text and "Bcc" not in response.text
+    assert post(client, edition[0], payload(edition[0], recipient="owner@example.com")).status_code == 503
+    assert not edition[1]
+
+
+def test_hosted_owner_cannot_send_to_arbitrary_address_or_without_confirmation(hosted_api, edition):
+    client, state = hosted_api
+    state["owner"] = True
+    issue_id, calls = edition
+    assert post(client, issue_id, payload(issue_id, recipient="someone-else@example.com")).status_code == 403
+    assert post(client, issue_id, payload(issue_id, recipient="owner+alias@example.com")).status_code == 403
+    assert post(client, issue_id, payload(issue_id, recipient="owner@example.com", confirmed=False)).status_code == 422
+    assert post(client, issue_id, payload(issue_id, recipient="owner@example.com"), actor=REP).status_code == 403
+    assert not calls
+
+
+def test_hosted_owner_preview_preserves_cid_images_and_deduplicates(hosted_api, edition):
+    client, state = hosted_api
+    state["owner"] = True
+    issue_id, calls = edition
+    original = store.get_issue(issue_id)
+    body = payload(issue_id, recipient="OWNER@example.com")
+    response = post(client, issue_id, body)
+    assert response.status_code == 200 and response.json()["status"] == "sent"
+    assert len(calls) == 1 and calls[0][0] == "owner@example.com"
+    html, images = calls[0][2], calls[0][3]
+    assert "Owner test from the shared BoardCast judge demo" in html
+    assert "BoardCast runs locally" not in html
+    assert "demo-only online-edition and calendar links have been omitted" in html
+    urls = Links(html).urls
+    assert len(images) == 1 and all("cid:" + cid in urls for cid in images)
+    assert not any("boardcast.example" in url for url in urls)
+    assert "https://forms.gle/real-registration" in urls
+    assert store.get_issue(issue_id) == original
+    assert not store.get_subscriber("owner@example.com")
+    assert post(client, issue_id, body).json()["duplicate"] and len(calls) == 1
+    state["owner"] = False
+    assert post(client, issue_id, body).status_code == 403
+
+
+def test_hosted_owner_still_requires_current_review_revision(hosted_api, edition):
+    client, state = hosted_api
+    state["owner"] = True
+    issue_id, calls = edition
+    body = payload(issue_id, recipient="owner@example.com")
+    store.db().collection("issues").document(issue_id).update({"newsletter_template": "newspaper"})
+    assert post(client, issue_id, body).status_code == 409
+    assert not calls
+
+
+def test_hosted_setup_guide_never_opens_even_for_owner_or_localhost_host(hosted_api):
+    client, state = hosted_api
+    state["owner"] = True
+    for headers in [{}, {"Host": "localhost"}]:
+        assert client.get("/admin/email-setup", headers=headers).status_code == 404
+
+
+def test_hosted_email_still_requires_local_demo_mode(hosted_api, edition, monkeypatch):
+    client, state = hosted_api
+    state["owner"] = True
+    monkeypatch.setattr(config, "LOCAL_MODE", False)
+    assert client.get("/admin/api/real-email/status", headers={"X-Dev-User": SA}).status_code == 404
+    assert post(client, edition[0], payload(edition[0], recipient="owner@example.com")).status_code == 404
+    assert not edition[1]
+
+
+def test_hosted_sender_authorisation_failure_does_not_refer_to_blocked_setup_page(hosted_api, edition, monkeypatch):
+    client, state = hosted_api
+    state["owner"] = True
+    def unauthorised(*args):
+        raise mailer.MailerConfigurationError("secret-token-provider-details")
+    monkeypatch.setattr(mailer, "send_real", unauthorised)
+    response = post(client, edition[0], payload(edition[0], recipient="owner@example.com"))
+    assert response.status_code == 200
+    assert response.json()["status"] == "failed"
+    assert "demo owner" in response.json()["message"]
+    assert "setup guide" not in response.text and "secret-token" not in response.text

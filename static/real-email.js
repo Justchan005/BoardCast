@@ -1,11 +1,15 @@
-// Explicit one-recipient Gmail previews. Ordinary local publishing stays in the outbox.
+// Explicit one-recipient Gmail previews. Ordinary publishing stays in the demo outbox.
 window.RealEmail = (() => {
   const $ = id => document.getElementById(id);
+  const hostedPage = document.body?.dataset.hostedDemo === 'true';
   let active = false, epoch = 0, connectionRequest = 0;
   let issue = null, publicationBusy = false, blocked = false;
   let connection = null, checking = false, sending = false, onStateChange = () => {};
   const receipts = new Map();
-  const recipient = () => $('real-email-recipient').value.trim().toLowerCase();
+  const hosted = () => hostedPage || connection?.hosted === true;
+  const ownerUnlocked = () => !hosted() || connection?.owner_required === false;
+  const fixedRecipient = () => typeof connection?.fixed_recipient === 'string' ? connection.fixed_recipient.trim().toLowerCase() : '';
+  const recipient = () => hosted() ? (ownerUnlocked() ? fixedRecipient() : '') : $('real-email-recipient').value.trim().toLowerCase();
   const editionKey = () => issue ? issue.id + '|' + (issue.email_revision || '') : '';
   const fingerprint = () => editionKey() + '|' + recipient();
   const eligible = () => !!issue?.email_revision && ['preview', 'sent'].includes(issue.status);
@@ -17,42 +21,66 @@ window.RealEmail = (() => {
   }
   function validRecipient() {
     const input = $('real-email-recipient'), value = recipient();
-    return !!value && !/[\r\n,;<>\s]/.test(value) && input.checkValidity();
+    return !!value && !/[\r\n,;<>\s]/.test(value) && input.checkValidity() &&
+      (!hosted() || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value));
   }
   function render() {
     if (!$('real-email-panel')) return;
     $('real-email-panel').hidden = !active;
-    const canSend = active && connection?.configured && !checking && !sending &&
+    const hostedMode = hosted(), unlocked = ownerUnlocked();
+    const input = $('real-email-recipient');
+    input.readOnly = hostedMode;
+    if (hostedMode) input.value = recipient();
+    const canSend = active && unlocked && connection?.configured && (!hostedMode || !!fixedRecipient()) && !checking && !sending &&
       !publicationBusy && !blocked && eligible();
     const previous = receipts.get(fingerprint());
     const alreadyHandled = previous && ['sent', 'sending', 'unknown'].includes(previous.status);
     $('real-email-send').disabled = !canSend || !validRecipient() || !$('real-email-confirm').checked || !!alreadyHandled;
-    $('real-email-send').textContent = sending ? 'Sending to Gmail…' : 'Send real email';
+    $('real-email-send').textContent = sending ? 'Sending to Gmail…' : hostedMode ? 'Send test email' : 'Send real email';
     $('real-email-refresh').disabled = !active || checking || sending;
     $('real-email-refresh').textContent = checking ? 'Checking…' : 'Refresh connection';
-    $('real-email-recipient').disabled = sending;
+    input.disabled = sending || (hostedMode && (!unlocked || checking));
     $('real-email-confirm').disabled = !canSend || !!alreadyHandled;
     $('real-email-form').setAttribute('aria-busy', String(sending));
     const configured = connection?.configured;
-    $('real-email-connection-label').textContent = checking ? 'Checking sender' : configured ? 'Gmail configured' : 'Set up Gmail';
+    $('real-email-connection-label').textContent = checking ? 'Checking sender' : !unlocked ? 'Owner access required' : configured ? 'Gmail configured' : hostedMode ? 'Sender unavailable' : 'Set up Gmail';
     $('real-email-connection').textContent = checking ? 'Checking the sender configuration…' :
-      connection?.message || 'Connect a Gmail account to send a preview outside this computer.';
+      connection?.message || (hostedMode ? 'Unlock owner access to test a real email to the configured recipient.' : 'Connect a Gmail account to send a preview outside this computer.');
+    const unlockLink = $('real-email-unlock');
+    if (unlockLink) unlockLink.hidden = !active || !hostedMode || unlocked;
+    const inboxLink = $('real-email-open-inbox');
+    if (inboxLink) {
+      let inboxUrl = '';
+      if (active && hostedMode && unlocked && previous?.status === 'sent') {
+        try {
+          const url = new URL(connection?.inbox_url || '');
+          if (url.origin === 'https://mail.google.com' && url.pathname.startsWith('/mail/') && !url.username && !url.password) inboxUrl = url.href;
+        } catch (_) { /* An absent or invalid inbox URL must never become a clickable link. */ }
+      }
+      inboxLink.hidden = !inboxUrl;
+      if (inboxUrl) inboxLink.href = inboxUrl; else inboxLink.removeAttribute('href');
+    }
     $('real-email-selected').textContent = issue
       ? (issue.status === 'sent' ? 'Copy of sent edition' : 'Selected edition') + ' · ' +
         (issue.editor_plan?.subject_line || 'Campus Weekly') + ' · Week of ' + issue.week_start
-      : 'No edition selected. Build a local preview first.';
-    $('real-email-requirement').textContent = !eligible()
+      : 'No edition selected. Build a ' + (hostedMode ? 'demo' : 'local') + ' preview first.';
+    $('real-email-requirement').textContent = !unlocked
+      ? 'Unlock email testing with owner access, then refresh the connection here.'
+      : !eligible()
       ? 'Build an eligible preview, or select the latest sent edition, before sending.'
       : blocked ? 'Save or discard your template changes before sending this edition.'
       : publicationBusy ? 'Wait for the publication action to finish.'
       : alreadyHandled ? previous.message
-      : !configured ? 'Complete Gmail setup, then refresh the connection here.'
+      : !configured ? hostedMode ? 'The test sender is unavailable. Ask the owner to check the configuration.' : 'Complete Gmail setup, then refresh the connection here.'
+      : hostedMode ? 'The recipient is fixed for this demo. Tick the confirmation to send this edition.'
       : 'Enter one recipient and tick the confirmation to send this edition.';
   }
   async function refresh() {
     if (!active || checking || sending) return;
     const currentEpoch = epoch, request = ++connectionRequest;
-    checking = true; connection = null; render();
+    checking = true; connection = null;
+    if (hostedPage) { $('real-email-confirm').checked = false; notice(); }
+    render();
     try {
       const result = await Staff.api('/admin/api/real-email/status');
       if (currentEpoch !== epoch || request !== connectionRequest) return;

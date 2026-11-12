@@ -15,6 +15,7 @@ from backend import hosted_demo as gate
 ORIGIN = "https://boardcast.example"
 CODE = "judge-access-code-for-testing"
 SECRET = "test-only-session-secret-32-characters-minimum"
+OWNER_CODE = "private-owner-test-code-32-characters-minimum"
 AFFAIRS = "studentaffairs.demo@apu.edu.my"
 
 
@@ -24,20 +25,26 @@ def hosted_environment(monkeypatch):
     monkeypatch.setenv("PUBLIC_BASE_URL", ORIGIN)
     monkeypatch.setenv("DEMO_ACCESS_CODE", CODE)
     monkeypatch.setenv("DEMO_SESSION_SECRET", SECRET)
+    monkeypatch.setenv("HOSTED_EMAIL_PREVIEW", "false")
     monkeypatch.setattr(gate.config, "LOCAL_MODE", True)
 
 
 @pytest.fixture
 def app():
     async def upstream(scope, receive, send):
-        await JSONResponse({"reached": scope["path"]}, headers={"cache-control": "public, max-age=3600"})(scope, receive, send)
+        await JSONResponse({"reached": scope["path"], "owner": scope.get("state", {}).get("hosted_owner")}, headers={"cache-control": "public, max-age=3600"})(scope, receive, send)
     return gate.HostedDemoMiddleware(upstream, settings=gate._Settings.from_environment())
 
 
-def request(app, method="GET", path="/demo", *, token=None, origin=None, headers=None, content=None, data=None, base=ORIGIN):
+def request(app, method="GET", path="/demo", *, token=None, owner_token=None, origin=None, headers=None, content=None, data=None, base=ORIGIN):
     pairs = list(headers or [])
+    cookies = []
     if token is not None:
-        pairs.append(("Cookie", f"{app.settings.cookie_name}={token}"))
+        cookies.append(f"{app.settings.cookie_name}={token}")
+    if owner_token is not None:
+        cookies.append(f"{app.settings.owner_cookie_name}={owner_token}")
+    if cookies:
+        pairs.append(("Cookie", "; ".join(cookies)))
     if origin is not None:
         pairs.append(("Origin", origin))
 
@@ -298,3 +305,125 @@ def test_all_responses_have_private_non_indexable_headers(app, path):
     assert response.headers["x-robots-tag"] == "noindex, nofollow, noarchive"
     assert response.headers["x-frame-options"] == "SAMEORIGIN"
     assert response.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.fixture
+def owner_app(monkeypatch, app):
+    monkeypatch.setenv("HOSTED_EMAIL_PREVIEW", "true")
+    monkeypatch.setenv("DEMO_OWNER_CODE", OWNER_CODE)
+    monkeypatch.setenv("HOSTED_EMAIL_RECIPIENT", "owner-test@example.com")
+    app.settings = gate._Settings.from_environment()
+    return app
+
+
+@pytest.mark.parametrize("key,value", [
+    ("HOSTED_EMAIL_PREVIEW", "maybe"), ("DEMO_OWNER_CODE", "short"),
+    ("DEMO_OWNER_CODE", "x" * 257), ("HOSTED_EMAIL_RECIPIENT", ""),
+    ("HOSTED_EMAIL_RECIPIENT", "a@example.com,b@example.com"),
+    ("HOSTED_EMAIL_RECIPIENT", "Owner <a@example.com>"),
+])
+def test_owner_feature_fails_closed_for_invalid_configuration(owner_app, monkeypatch, key, value):
+    monkeypatch.setenv(key, value)
+    with pytest.raises(RuntimeError):
+        gate._Settings.from_environment()
+
+
+def test_owner_code_cannot_equal_judge_code(owner_app, monkeypatch):
+    monkeypatch.setenv("DEMO_ACCESS_CODE", OWNER_CODE)
+    with pytest.raises(RuntimeError, match="different"):
+        gate._Settings.from_environment()
+
+
+def test_owner_unlock_requires_judge_session_and_explicit_enable(app, owner_app):
+    assert request(owner_app, path="/judge/owner").headers["location"] == "/judge/login"
+    assert request(owner_app, "POST", "/judge/owner", origin=ORIGIN, data={"owner_code": OWNER_CODE}).status_code == 401
+    from dataclasses import replace
+    owner_app.settings = replace(owner_app.settings, owner_code=None, owner_signing_key=b"")
+    assert request(owner_app, path="/judge/owner", token=owner_app.settings.session()).status_code == 404
+
+
+def test_owner_login_issues_short_lived_separate_cookie(owner_app):
+    token = owner_app.settings.session()
+    page = request(owner_app, path="/judge/owner", token=token)
+    assert page.status_code == 200 and 'name="owner_code"' in page.text
+    assert OWNER_CODE not in page.text
+    response = request(owner_app, "POST", "/judge/owner", token=token, origin=ORIGIN, data={"owner_code": OWNER_CODE})
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin?demo=student-affairs"
+    cookie = response.headers["set-cookie"]
+    for text in ["__Host-boardcast_owner=", "HttpOnly", "Secure", "SameSite=strict", "Path=/", "Max-Age=900"]:
+        assert text in cookie
+    owner_token = response.cookies[owner_app.settings.owner_cookie_name]
+    assert owner_app.settings.valid_owner_session(owner_token, token)
+    assert not owner_app.settings.valid_session(owner_token)
+    assert not owner_app.settings.valid_owner_session(token, token)
+    assert not owner_app.settings.valid_owner_session(owner_token, owner_app.settings.session())
+    assert request(owner_app, token=token, owner_token=owner_token).json()["owner"] is True
+    assert OWNER_CODE not in cookie and SECRET not in cookie
+
+
+def test_owner_tokens_expire_and_are_revoked_by_code_rotation(owner_app, monkeypatch):
+    clock = [1800000000]
+    monkeypatch.setattr(gate.time, "time", lambda: clock[0])
+    token = owner_app.settings.session()
+    owner_token = owner_app.settings.owner_session(token)
+    assert owner_app.settings.valid_owner_session(owner_token, token)
+    clock[0] += gate.OWNER_SESSION_SECONDS
+    assert not owner_app.settings.valid_owner_session(owner_token, token)
+    clock[0] -= gate.OWNER_SESSION_SECONDS
+    monkeypatch.setenv("DEMO_OWNER_CODE", OWNER_CODE + "-changed")
+    assert not gate._Settings.from_environment().valid_owner_session(owner_token, token)
+    assert not owner_app.settings.valid_owner_session(owner_token + "x", token)
+
+
+def test_owner_headers_cannot_grant_access_and_locked_status_remains_available(owner_app):
+    token = owner_app.settings.session()
+    headers = [("X-Dev-User", AFFAIRS), ("X-Hosted-Owner", "true"), ("X-Owner-Code", OWNER_CODE)]
+    status = request(owner_app, path="/admin/api/real-email/status", token=token, headers=headers)
+    assert status.status_code == 200 and status.json()["owner"] is False
+    denied = request(owner_app, "POST", "/admin/api/issues/sample/email-preview", token=token, origin=ORIGIN, headers=headers)
+    assert denied.status_code == 403
+
+
+def test_owner_session_requires_student_affairs_and_same_origin_for_send(owner_app):
+    token = owner_app.settings.session()
+    owner_token = owner_app.settings.owner_session(token)
+    path = "/admin/api/issues/sample/email-preview"
+    common = {"token": token, "owner_token": owner_token}
+    assert request(owner_app, "POST", path, headers=[("X-Dev-User", AFFAIRS)], **common).status_code == 403
+    assert request(owner_app, "POST", path, origin=ORIGIN, headers=[("X-Dev-User", "clubrep.demo@mail.apu.edu.my")], **common).status_code == 403
+    accepted = request(owner_app, "POST", path, origin=ORIGIN, headers=[("X-Dev-User", AFFAIRS)], **common)
+    assert accepted.status_code == 200 and accepted.json()["owner"] is True
+    for blocked in ("/issues/send", "/admin/email-setup", "/admin/api/real-email/other"):
+        assert request(owner_app, "POST", blocked, origin=ORIGIN, headers=[("X-Dev-User", AFFAIRS)], **common).status_code == 404
+
+
+def test_reunlocking_does_not_reset_owner_send_limit(owner_app):
+    token = owner_app.settings.session()
+    for _ in range(3):
+        result = request(owner_app, "POST", "/admin/api/issues/sample/email-preview", token=token,
+                         owner_token=owner_app.settings.owner_session(token), origin=ORIGIN, headers=[("X-Dev-User", AFFAIRS)])
+        assert result.status_code == 200
+    token = owner_app.settings.session()
+    result = request(owner_app, "POST", "/admin/api/issues/sample/email-preview", token=token,
+                     owner_token=owner_app.settings.owner_session(token), origin=ORIGIN, headers=[("X-Dev-User", AFFAIRS)])
+    assert result.status_code == 429 and int(result.headers["retry-after"]) > 0
+
+
+def test_owner_unlock_is_same_origin_and_rate_limited(owner_app):
+    token = owner_app.settings.session()
+    denied = request(owner_app, "POST", "/judge/owner", token=token, origin="https://evil.example", data={"owner_code": OWNER_CODE})
+    assert denied.status_code == 403
+    for _ in range(10):
+        assert request(owner_app, "POST", "/judge/owner", token=token, origin=ORIGIN, data={"owner_code": "wrong"}).status_code == 401
+    assert request(owner_app, "POST", "/judge/owner", token=token, origin=ORIGIN, data={"owner_code": OWNER_CODE}).status_code == 429
+
+
+def test_logout_clears_both_judge_and_owner_cookies(owner_app):
+    token = owner_app.settings.session()
+    response = request(owner_app, "POST", "/judge/logout", token=token,
+                       owner_token=owner_app.settings.owner_session(token), origin=ORIGIN)
+    cookies = response.headers.get_list("set-cookie")
+    assert len(cookies) == 2
+    assert any(owner_app.settings.cookie_name + "=" in value and "Max-Age=0" in value for value in cookies)
+    assert any(owner_app.settings.owner_cookie_name + "=" in value and "Max-Age=0" in value for value in cookies)

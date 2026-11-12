@@ -1,6 +1,7 @@
 """Hosted boot configuration and sample seeding, with no network or server startup."""
 from copy import deepcopy
 from datetime import datetime
+import json
 from pathlib import Path
 import sys
 from types import ModuleType
@@ -152,3 +153,51 @@ def test_entrypoint_uses_one_worker_and_never_starts_server_in_test(monkeypatch)
     monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: calls.append((app, kwargs)))
     launcher.main([])
     assert calls == ["seed", (fake_main.app, {"host": "0.0.0.0", "port": 10000, "workers": 1})]
+
+
+def owner_env(**overrides):
+    return env(HOSTED_EMAIL_PREVIEW="true", DEMO_OWNER_CODE="owner-only-test-code-32-characters-minimum",
+               HOSTED_EMAIL_RECIPIENT="Test.Owner@example.com", **overrides)
+
+
+def test_explicit_owner_test_only_retains_json_sender_credentials():
+    token = json.dumps({"refresh_token": "test-refresh", "client_id": "test-client", "client_secret": "test-secret"})
+    values = owner_env(GMAIL_TOKEN_JSON=token, GMAIL_TOKEN_FILE="private-token.json",
+                       GMAIL_OTHER_SECRET="unexpected", GOOGLE_APPLICATION_CREDENTIALS="adc.json")
+    launcher.configure_environment(values)
+    assert values["GMAIL_TOKEN_JSON"] == token
+    assert values["GMAIL_TOKEN_FILE"].endswith(".real-email-disabled")
+    assert "GMAIL_OTHER_SECRET" not in values
+    assert "GOOGLE_APPLICATION_CREDENTIALS" not in values
+    assert values["HOSTED_EMAIL_RECIPIENT"] == "test.owner@example.com"
+    assert values["HOSTED_EMAIL_PREVIEW"] == "true"
+
+
+@pytest.mark.parametrize("key,value", [
+    ("HOSTED_EMAIL_PREVIEW", "yes"), ("DEMO_OWNER_CODE", "short"),
+    ("DEMO_OWNER_CODE", "x" * 257), ("HOSTED_EMAIL_RECIPIENT", ""),
+    ("HOSTED_EMAIL_RECIPIENT", "one@example.com,two@example.com"),
+    ("HOSTED_EMAIL_RECIPIENT", "Owner <one@example.com>"),
+    ("HOSTED_EMAIL_RECIPIENT", "one@example.com\r\nBcc: two@example.com"),
+    ("GMAIL_TOKEN_JSON", "not json"), ("GMAIL_TOKEN_JSON", "{}"),
+])
+def test_unsafe_owner_opt_in_stops_launcher(key, value):
+    values = owner_env()
+    values[key] = value
+    with pytest.raises(ValueError):
+        launcher.configure_environment(values)
+
+
+def test_owner_and_judge_codes_must_be_different():
+    values = owner_env()
+    values["DEMO_ACCESS_CODE"] = values["DEMO_OWNER_CODE"]
+    with pytest.raises(ValueError, match="different"):
+        launcher.configure_environment(values)
+
+
+def test_owner_details_do_not_enable_email_without_explicit_opt_in():
+    values = owner_env(GMAIL_TOKEN_JSON="a token that must be removed")
+    values["HOSTED_EMAIL_PREVIEW"] = "false"
+    launcher.configure_environment(values)
+    assert values["HOSTED_EMAIL_PREVIEW"] == "false"
+    assert "GMAIL_TOKEN_JSON" not in values
