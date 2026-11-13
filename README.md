@@ -2,6 +2,7 @@
 
 Clubs and APU offices submit a poster once. Gemini reads it, a pre-review agent checks it, Student Affairs approves it, and Campus Weekly carries every approved item to subscribed students by email and as a web magazine.
 https://boardcast-judge-demo-b0q3.onrender.com/submit?demo=club
+Access code: z7-jNJg8cKx3r9KObILvXmYX
 
 APU Cloud Innovation Hackathon 2026 · Track 2: Intelligent Automation & Digital Transformation
 
