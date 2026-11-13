@@ -2,7 +2,7 @@
 
 Clubs and APU offices submit a poster once. Gemini reads it, a pre-review agent checks it, Student Affairs approves it, and Campus Weekly carries every approved item to subscribed students by email and as a web magazine.
 https://boardcast-judge-demo-b0q3.onrender.com/submit?demo=club
-Access code: z7-jNJg8cKx3r9KObILvXmYX
+
 
 APU Cloud Innovation Hackathon 2026 · Track 2: Intelligent Automation & Digital Transformation
 
@@ -375,6 +375,7 @@ QR decoding needs the `zbar` library (`brew install zbar` / `sudo apt install li
 4. `BOARDCAST_API_URL=<Cloud Run URL> bash infra/deploy_agent.sh`. The script explicitly selects the `boardcast-agent` runtime account trusted by the API. The deployer needs permission to act as that account.
 5. Gemini Enterprise console: add the Agent Engine agent, share it only with the Club reps and Student Affairs groups
 6. The first `/issues/send` may ask Firestore for a composite index; open the link in the error to create it
+Access code: z7-jNJg8cKx3r9KObILvXmYX
 
 ## Judging criteria → evidence
 
