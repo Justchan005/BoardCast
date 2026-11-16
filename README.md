@@ -4,6 +4,8 @@ Clubs and APU offices submit a poster once. Gemini reads it, a pre-review agent 
 
 APU Cloud Innovation Hackathon 2026 · Track 2: Intelligent Automation & Digital Transformation
 
+**Judge demo:** [Open BoardCast](https://boardcast-judge-demo-b0q3.onrender.com/demo). No access code is required. Try **Club → Student Affairs → Outbox**. In Student Affairs, **Send test email** sends the selected preview to the configured test inbox after confirmation, with no owner unlock step.
+
 | Read this | For |
 | --- | --- |
 | `docs/ARCHITECTURE.md` | The diagram: inputs, model choices, tools, data, actions, outputs, controls |

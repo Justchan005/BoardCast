@@ -7,9 +7,8 @@ window.RealEmail = (() => {
   let connection = null, checking = false, sending = false, onStateChange = () => {};
   const receipts = new Map();
   const hosted = () => hostedPage || connection?.hosted === true;
-  const ownerUnlocked = () => !hosted() || connection?.owner_required === false;
   const fixedRecipient = () => typeof connection?.fixed_recipient === 'string' ? connection.fixed_recipient.trim().toLowerCase() : '';
-  const recipient = () => hosted() ? (ownerUnlocked() ? fixedRecipient() : '') : $('real-email-recipient').value.trim().toLowerCase();
+  const recipient = () => hosted() ? fixedRecipient() : $('real-email-recipient').value.trim().toLowerCase();
   const editionKey = () => issue ? issue.id + '|' + (issue.email_revision || '') : '';
   const fingerprint = () => editionKey() + '|' + recipient();
   const eligible = () => !!issue?.email_revision && ['preview', 'sent'].includes(issue.status);
@@ -27,11 +26,11 @@ window.RealEmail = (() => {
   function render() {
     if (!$('real-email-panel')) return;
     $('real-email-panel').hidden = !active;
-    const hostedMode = hosted(), unlocked = ownerUnlocked();
+    const hostedMode = hosted();
     const input = $('real-email-recipient');
     input.readOnly = hostedMode;
     if (hostedMode) input.value = recipient();
-    const canSend = active && unlocked && connection?.configured && (!hostedMode || !!fixedRecipient()) && !checking && !sending &&
+    const canSend = active && connection?.configured && (!hostedMode || !!fixedRecipient()) && !checking && !sending &&
       !publicationBusy && !blocked && eligible();
     const previous = receipts.get(fingerprint());
     const alreadyHandled = previous && ['sent', 'sending', 'unknown'].includes(previous.status);
@@ -39,19 +38,17 @@ window.RealEmail = (() => {
     $('real-email-send').textContent = sending ? 'Sending to Gmail…' : hostedMode ? 'Send test email' : 'Send real email';
     $('real-email-refresh').disabled = !active || checking || sending;
     $('real-email-refresh').textContent = checking ? 'Checking…' : 'Refresh connection';
-    input.disabled = sending || (hostedMode && (!unlocked || checking));
+    input.disabled = sending || (hostedMode && (checking || !fixedRecipient()));
     $('real-email-confirm').disabled = !canSend || !!alreadyHandled;
     $('real-email-form').setAttribute('aria-busy', String(sending));
     const configured = connection?.configured;
-    $('real-email-connection-label').textContent = checking ? 'Checking sender' : !unlocked ? 'Owner access required' : configured ? 'Gmail configured' : hostedMode ? 'Sender unavailable' : 'Set up Gmail';
+    $('real-email-connection-label').textContent = checking ? 'Checking sender' : configured ? 'Gmail configured' : hostedMode ? 'Sender unavailable' : 'Set up Gmail';
     $('real-email-connection').textContent = checking ? 'Checking the sender configuration…' :
-      connection?.message || (hostedMode ? 'Unlock owner access to test a real email to the configured recipient.' : 'Connect a Gmail account to send a preview outside this computer.');
-    const unlockLink = $('real-email-unlock');
-    if (unlockLink) unlockLink.hidden = !active || !hostedMode || unlocked;
+      connection?.message || (hostedMode ? 'Send a test email to the configured recipient.' : 'Connect a Gmail account to send a preview outside this computer.');
     const inboxLink = $('real-email-open-inbox');
     if (inboxLink) {
       let inboxUrl = '';
-      if (active && hostedMode && unlocked && previous?.status === 'sent') {
+      if (active && hostedMode && connection?.configured && previous?.status === 'sent') {
         try {
           const url = new URL(connection?.inbox_url || '');
           if (url.origin === 'https://mail.google.com' && url.pathname.startsWith('/mail/') && !url.username && !url.password) inboxUrl = url.href;
@@ -64,9 +61,7 @@ window.RealEmail = (() => {
       ? (issue.status === 'sent' ? 'Copy of sent edition' : 'Selected edition') + ' · ' +
         (issue.editor_plan?.subject_line || 'Campus Weekly') + ' · Week of ' + issue.week_start
       : 'No edition selected. Build a ' + (hostedMode ? 'demo' : 'local') + ' preview first.';
-    $('real-email-requirement').textContent = !unlocked
-      ? 'Unlock email testing with owner access, then refresh the connection here.'
-      : !eligible()
+    $('real-email-requirement').textContent = !eligible()
       ? 'Build an eligible preview, or select the latest sent edition, before sending.'
       : blocked ? 'Save or discard your template changes before sending this edition.'
       : publicationBusy ? 'Wait for the publication action to finish.'

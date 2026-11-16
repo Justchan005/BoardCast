@@ -21,9 +21,5 @@ services:
         value: "false"
       - key: GOOGLE_GENAI_USE_VERTEXAI
         value: "false"
-      - key: DEMO_ACCESS_CODE
-        generateValue: true
-      - key: DEMO_SESSION_SECRET
-        generateValue: true
       - key: LINK_SECRET
         generateValue: true

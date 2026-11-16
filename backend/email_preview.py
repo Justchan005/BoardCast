@@ -1,7 +1,7 @@
 """Explicit, single-recipient Gmail previews from the review desk.
 
 This never changes subscription or publication state. Normal local mail still goes
-to the outbox. Hosted tests require a separate owner session and a fixed inbox.
+to the outbox. Hosted tests use a fixed inbox without an access-code prompt.
 A durable receipt prevents duplicate sends and records uncertainty.
 """
 from __future__ import annotations
@@ -49,8 +49,8 @@ def _preview_request(request: Request) -> None:
     if config.HOSTED_DEMO:
         if not config.LOCAL_MODE:
             raise HTTPException(404, "Not found")
-        # The hosted gate checks the judge cookie, Host and same-origin mutations.
-        # The endpoint independently requires its verified owner state before sending.
+        # The hosted middleware checks Host and same-origin mutations.
+        # This endpoint independently checks the role and fixed recipient.
         return
     _local_request(request)
 
@@ -59,17 +59,11 @@ def _hosted_email_enabled() -> bool:
     return os.environ.get("HOSTED_EMAIL_PREVIEW", "").strip().lower() in {"true", "1"}
 
 
-def _owner_verified(request: Request) -> bool:
-    # State is set only by the hosted gate after checking the signed owner cookie.
-    # Never accept a request header, form field, or a merely truthy state value.
-    return getattr(request.state, "hosted_owner", False) is True
-
-
 def _hosted_recipient() -> str:
     try:
         return mailer.validate_recipient(os.environ.get("HOSTED_EMAIL_RECIPIENT", ""))
     except ValueError:
-        raise HTTPException(503, "Owner email testing is not configured. Contact the demo owner.") from None
+        raise HTTPException(503, "Email testing is not configured. Contact the demo owner.") from None
 
 
 def _edition(doc: dict):
@@ -224,7 +218,7 @@ def render(doc: dict, *, snapshot=None) -> tuple[str, str, dict[str, bytes]]:
     converted.close()
     html = "".join(converted.output)
     explanation = (
-        "Owner test from the shared BoardCast judge demo. You have not been subscribed. "
+        "Test email from the shared BoardCast judge demo. You have not been subscribed. "
         "Posters are included; demo-only online-edition and calendar links have been omitted."
         if config.HOSTED_DEMO else
         "Sent by Student Affairs to the selected address. You have not been subscribed. "
@@ -328,16 +322,13 @@ def connection_status(request: Request, email: str = Depends(auth.web_user)):
     auth.require_role(email, Role.STUDENT_AFFAIRS)
     if config.HOSTED_DEMO:
         if not _hosted_email_enabled():
-            return {"configured": False, "owner_required": False, "hosted": True,
+            return {"configured": False, "hosted": True,
                     "message": "Real email testing is unavailable in this demo."}
-        if not _owner_verified(request):
-            return {"configured": False, "owner_required": True, "hosted": True,
-                    "message": "Unlock owner email testing to send a real preview."}
         try:
             recipient = _hosted_recipient()
         except HTTPException as exc:
-            return {"configured": False, "owner_required": False, "hosted": True, "message": exc.detail}
-        return {**mailer.real_email_status(), "owner_required": False, "hosted": True,
+            return {"configured": False, "hosted": True, "message": exc.detail}
+        return {**mailer.real_email_status(), "hosted": True,
                 "fixed_recipient": recipient, "inbox_url": "https://mail.google.com/mail/u/0/#inbox"}
     return mailer.real_email_status()
 
@@ -348,8 +339,6 @@ def email_preview(issue_id: str, body: PreviewRequest, request: Request, email: 
     if config.HOSTED_DEMO:
         if not _hosted_email_enabled():
             raise HTTPException(404, "Real email testing is unavailable in this demo.")
-        if not _owner_verified(request):
-            raise HTTPException(403, "Unlock owner email testing before sending a real preview.")
     if not body.confirmed:
         raise HTTPException(422, "Confirm the recipient before sending a real email.")
     try:

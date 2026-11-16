@@ -4,7 +4,7 @@
 {% block content %}
 <main class="wrap wide">
   <header class="page-heading">
-    <div><h1>Outbox preview</h1><p class="muted">{% if hosted_demo %}See the email previews saved by judges in this shared demo. Publishing saves them here. Owner-only email tests use the separate action in Student Affairs.{% else %}See the emails saved for students and clubs. These messages stay on this computer.{% endif %}</p></div>
+    <div><h1>Outbox preview</h1><p class="muted">{% if hosted_demo %}See the email previews saved by judges in this shared demo. Publishing saves them here. Use Send test email in Student Affairs to send a preview to the configured test address.{% else %}See the emails saved for students and clubs. These messages stay on this computer.{% endif %}</p></div>
     <a class="btn secondary" href="/admin?demo=student-affairs">Back to Student Affairs</a>
   </header>
   {% if selected %}

@@ -1,4 +1,4 @@
-"""Run the isolated, access-controlled judge demo. Never reads a local .env file."""
+"""Run the isolated, public judge demo. Never reads a local .env file."""
 from __future__ import annotations
 
 import argparse
@@ -58,7 +58,7 @@ def configure_environment(environ: MutableMapping[str, str] | None = None, *,
     env["PYTHON_DOTENV_DISABLED"] = "1"
     if test_data_dir is not None and not local_test:
         raise ValueError("A custom data folder is only allowed with --local-test.")
-    for key, minimum in (("DEMO_ACCESS_CODE", 16), ("DEMO_SESSION_SECRET", 32), ("LINK_SECRET", 32)):
+    for key, minimum in (("LINK_SECRET", 32),):
         if len(env.get(key, "").strip()) < minimum:
             raise ValueError(f"Set {key} to a private value of at least {minimum} characters.")
     public_url = _public_url(env.get("PUBLIC_BASE_URL") or env.get("RENDER_EXTERNAL_URL", ""),
@@ -75,10 +75,6 @@ def configure_environment(environ: MutableMapping[str, str] | None = None, *,
         raise ValueError("HOSTED_EMAIL_PREVIEW must be true or false.")
     email_preview = preview_flag in {"true", "1"}
     if email_preview:
-        owner_code = env.get("DEMO_OWNER_CODE", "").strip()
-        if (not 32 <= len(owner_code) <= 256
-                or owner_code == env.get("DEMO_ACCESS_CODE", "").strip()):
-            raise ValueError("DEMO_OWNER_CODE must be 32–256 characters and different from the judge access code.")
         recipient = env.get("HOSTED_EMAIL_RECIPIENT", "").strip()
         local, separator, domain = recipient.partition("@")
         if (not separator or not recipient.isascii() or len(recipient) > 254 or len(local) > 64
@@ -99,7 +95,7 @@ def configure_environment(environ: MutableMapping[str, str] | None = None, *,
             except (ValueError, TypeError):
                 raise ValueError("GMAIL_TOKEN_JSON must contain complete Gmail OAuth credentials.") from None
 
-    # Only the explicit owner-test opt-in may retain Gmail JSON credentials.
+    # Only the explicit email-preview opt-in may retain Gmail JSON credentials.
     # ADC, token files and campus/cloud service identities are always cleared.
     for key in list(env):
         if key.upper().startswith(("GMAIL_", "CLOUDSDK_", "GOOGLE_APPLICATION_CREDENTIALS")):
@@ -186,11 +182,11 @@ def main(argv: list[str] | None = None) -> None:
         settings = configure_environment(local_test=args.local_test, test_data_dir=args.data_dir)
     except ValueError as exc:
         parser.error(str(exc))
-    # Gate setup must succeed before sample initialization or opening a port.
+    # Hosted configuration must succeed before sample initialization or opening a port.
     from backend.main import app
     seed_demo()
     import uvicorn
-    print("BoardCast judge sandbox: access code required; sample data; ordinary delivery stays in the outbox.", flush=True)
+    print("BoardCast public judge demo: no access code; sample data; ordinary delivery stays in the outbox.", flush=True)
     print("Free-host data may reset when the service sleeps, restarts or redeploys.", flush=True)
     uvicorn.run(app, host="127.0.0.1" if args.local_test else "0.0.0.0", port=settings.port, workers=1)
 

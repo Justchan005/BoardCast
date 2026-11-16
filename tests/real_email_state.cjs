@@ -153,55 +153,41 @@ async function run() {
     console.log('PASS late outcomes do not overwrite a newer edition');
   }
   {
-    const f = fixture(async () => ({configured: false, owner_required: true, hosted: true, message: 'Owner access required.'}), true);
-    await f.ready(); f.address('other@example.com'); f.confirm(); await f.submit();
-    assert.equal(f.get('real-email-unlock').hidden, false);
-    assert.equal(f.get('real-email-recipient').value, '');
-    assert.equal(f.get('real-email-recipient').disabled, true);
-    assert.equal(f.get('real-email-recipient').readOnly, true);
-    assert.equal(f.get('real-email-confirm').disabled, true);
-    assert.equal(f.get('real-email-send').textContent, 'Send test email');
-    assert.equal(f.get('real-email-send').disabled, true);
-    assert.equal(f.get('real-email-open-inbox').hidden, true);
-    assert.equal(f.calls.length, 1, 'owner-locked submits must not reach the API');
     for (const response of [
       {configured: true, hosted: true},
-      {configured: true, hosted: true, owner_required: false},
-      {configured: false, hosted: true, owner_required: false},
+      {configured: false, hosted: true, fixed_recipient: 'owner@example.com'},
+      {configured: true, hosted: true, fixed_recipient: 'not-an-email'},
     ]) {
       const unavailable = fixture(async () => response, true);
       await unavailable.ready(); unavailable.confirm(); await unavailable.submit();
-      assert.equal(unavailable.calls.length, 1, 'explicit owner unlock and configured fixed recipient are required');
+      assert.equal(unavailable.calls.length, 1, 'configured sender and a valid fixed recipient are required');
       assert.equal(unavailable.get('real-email-send').disabled, true);
       assert.equal(unavailable.get('real-email-open-inbox').hidden, true);
-      if(response.owner_required === false) assert.equal(unavailable.get('real-email-unlock').hidden, true);
     }
-    console.log('PASS hosted owner lock and unavailable or incomplete configuration fail closed');
+    console.log('PASS hosted unavailable or incomplete configuration blocks sending');
   }
   {
-    let unlocked = false;
+    let configured = true;
     const inbox = 'https://mail.google.com/mail/u/0/#inbox';
     const f = fixture(async route => route.endsWith('/status')
-      ? unlocked ? {configured: true, hosted: true, owner_required: false, fixed_recipient: 'Owner@Example.com', inbox_url: inbox}
-        : {configured: false, hosted: true, owner_required: true}
+      ? configured ? {configured: true, hosted: true, fixed_recipient: 'Owner@Example.com', inbox_url: inbox}
+        : {configured: false, hosted: true}
       : {status: 'sent', message: 'Gmail accepted this preview.'}, true);
     await f.ready(); assert.equal(f.calls.length, 1);
-    unlocked = true; await f.get('real-email-refresh').onclick();
-    assert.equal(f.calls.length, 2, 'unlocking and refreshing must never automatically send');
     assert.equal(f.get('real-email-recipient').value, 'owner@example.com');
     assert.equal(f.get('real-email-recipient').readOnly, true);
-    assert.equal(f.get('real-email-unlock').hidden, true);
+    assert.equal(f.get('real-email-send').disabled, true, 'configuration never substitutes for explicit confirmation');
     assert.equal(f.get('real-email-open-inbox').hidden, true, 'Gmail link appears only after an accepted send');
     f.address('tampered@example.com');
     assert.equal(f.get('real-email-recipient').value, 'owner@example.com');
     f.confirm(); await f.submit();
-    assert.deepEqual(JSON.parse(f.calls[2].body), {recipient: 'owner@example.com', confirmed: true, expected_revision: 'rev-1'});
+    assert.deepEqual(JSON.parse(f.calls[1].body), {recipient: 'owner@example.com', confirmed: true, expected_revision: 'rev-1'});
     assert.equal(f.get('real-email-open-inbox').hidden, false);
     assert.equal(f.get('real-email-open-inbox').href, inbox);
     assert.equal(f.popups.length, 0, 'successful sends must not open a browser popup');
     f.confirm(); await f.submit();
-    assert.equal(f.calls.length, 3, 'same accepted hosted test must not be resent');
-    unlocked = false; await f.get('real-email-refresh').onclick();
+    assert.equal(f.calls.length, 2, 'same accepted hosted test must not be resent');
+    configured = false; await f.get('real-email-refresh').onclick();
     assert.equal(f.get('real-email-recipient').value, '');
     assert.equal(f.get('real-email-confirm').checked, false);
     assert.equal(f.get('real-email-result').textContent, '');
@@ -212,20 +198,19 @@ async function run() {
     assert.equal(f.get('real-email-open-inbox').href, undefined);
     f.panel.reset();
     assert.equal(f.get('real-email-recipient').value, '');
-    assert.equal(f.get('real-email-unlock').hidden, true);
-    console.log('PASS hosted fixed recipient, explicit confirmation, accepted Gmail link and no automatic send or popup');
+    console.log('PASS code-free hosted sending, fixed recipient, confirmation and duplicate protection');
   }
   {
     for(const outcome of ['unknown', 'failed']) {
       const f = fixture(async route => route.endsWith('/status')
-        ? {configured: true, hosted: true, owner_required: false, fixed_recipient: 'owner@example.com', inbox_url: 'https://mail.google.com/mail/u/0/#inbox'}
+        ? {configured: true, hosted: true, fixed_recipient: 'owner@example.com', inbox_url: 'https://mail.google.com/mail/u/0/#inbox'}
         : {status: outcome}, true);
       await f.ready(); f.confirm(); await f.submit();
       assert.equal(f.get('real-email-open-inbox').hidden, true);
       assert.equal(f.calls.length, 2);
     }
     const f = fixture(async route => route.endsWith('/status')
-      ? {configured: true, hosted: true, owner_required: false, fixed_recipient: 'owner@example.com', inbox_url: 'https://mail.google.com.attacker.example/mail/'}
+      ? {configured: true, hosted: true, fixed_recipient: 'owner@example.com', inbox_url: 'https://mail.google.com.attacker.example/mail/'}
       : {status: 'sent'}, true);
     await f.ready(); f.confirm(); await f.submit();
     assert.equal(f.get('real-email-open-inbox').hidden, true);
