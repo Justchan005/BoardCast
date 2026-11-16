@@ -1,13 +1,15 @@
-"""Explicit, single-recipient Gmail previews from the local review desk.
+"""Explicit, single-recipient Gmail previews from the review desk.
 
 This never changes subscription or publication state. Normal local mail still goes
-to the outbox. A durable receipt prevents duplicate sends and records uncertainty.
+to the outbox. Hosted tests use a fixed inbox without an access-code prompt.
+A durable receipt prevents duplicate sends and records uncertainty.
 """
 from __future__ import annotations
 
 import hashlib
 import io
 import json
+import os
 import uuid
 from datetime import timedelta
 from html import escape
@@ -29,7 +31,7 @@ MAX_TOTAL_BYTES = 8 * 1024 * 1024
 
 
 def _local_request(request: Request) -> None:
-    if not config.LOCAL_MODE:
+    if config.HOSTED_DEMO or not config.LOCAL_MODE:
         raise HTTPException(404, "Not found")
     # This feature uses local demo identities. Reject DNS rebinding and cross-origin
     # browser requests rather than exposing those identities as public mail access.
@@ -41,6 +43,27 @@ def _local_request(request: Request) -> None:
         supplied = urlsplit(origin)
         if (supplied.scheme, supplied.netloc) != (expected.scheme, expected.netloc):
             raise HTTPException(403, "Open the email preview form in this BoardCast window.")
+
+
+def _preview_request(request: Request) -> None:
+    if config.HOSTED_DEMO:
+        if not config.LOCAL_MODE:
+            raise HTTPException(404, "Not found")
+        # The hosted middleware checks Host and same-origin mutations.
+        # This endpoint independently checks the role and fixed recipient.
+        return
+    _local_request(request)
+
+
+def _hosted_email_enabled() -> bool:
+    return os.environ.get("HOSTED_EMAIL_PREVIEW", "").strip().lower() in {"true", "1"}
+
+
+def _hosted_recipient() -> str:
+    try:
+        return mailer.validate_recipient(os.environ.get("HOSTED_EMAIL_RECIPIENT", ""))
+    except ValueError:
+        raise HTTPException(503, "Email testing is not configured. Contact the demo owner.") from None
 
 
 def _edition(doc: dict):
@@ -194,10 +217,15 @@ def render(doc: dict, *, snapshot=None) -> tuple[str, str, dict[str, bytes]]:
     converted.feed(html)
     converted.close()
     html = "".join(converted.output)
+    explanation = (
+        "Test email from the shared BoardCast judge demo. You have not been subscribed. "
+        "Posters are included; demo-only online-edition and calendar links have been omitted."
+        if config.HOSTED_DEMO else
+        "Sent by Student Affairs to the selected address. You have not been subscribed. "
+        "Posters are included; online-edition and calendar links are unavailable while BoardCast runs locally."
+    )
     note = ('<div style="padding:14px 20px;font:14px/1.5 Arial,sans-serif;color:#24334a;background:#eef3fa;">'
-            '<strong>BoardCast preview copy</strong> · Sent by Student Affairs to the selected address. '
-            'You have not been subscribed. Posters are included; online-edition and calendar links '
-            'are unavailable while BoardCast runs locally.</div>')
+            '<strong>BoardCast preview copy</strong> · ' + explanation + '</div>')
     import re
     html = re.sub(r"(<body\b[^>]*>)", lambda m: m[1] + note, html, count=1, flags=re.I)
     if len(html.encode()) + sum(map(len, images.values())) > MAX_TOTAL_BYTES:
@@ -260,7 +288,9 @@ def send_preview(issue_id: str, recipient: str, expected_revision: str, actor: s
         message_id = mailer.send_real(recipient, subject, html, images)
     except (mailer.MailerConfigurationError, RefreshError):
         state, message_id = "failed", None
-        error = "The sender could not be authorised. Reconnect Gmail using the setup guide, then try again."
+        error = ("The sender could not be authorised. Ask the demo owner to reconnect the Gmail sender before trying again."
+                 if config.HOSTED_DEMO else
+                 "The sender could not be authorised. Reconnect Gmail using the setup guide, then try again.")
     except Exception as exc:
         state, message_id = ("failed" if delivery._definitely_rejected(exc) else "unknown"), None
         error = "Gmail rejected this send. Check account permissions and quota before trying again." if state == "failed" else None
@@ -287,21 +317,36 @@ class PreviewRequest(BaseModel):
     expected_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
-@router.get("/admin/api/real-email/status", dependencies=[Depends(_local_request)])
-def connection_status(email: str = Depends(auth.web_user)):
+@router.get("/admin/api/real-email/status", dependencies=[Depends(_preview_request)])
+def connection_status(request: Request, email: str = Depends(auth.web_user)):
     auth.require_role(email, Role.STUDENT_AFFAIRS)
+    if config.HOSTED_DEMO:
+        if not _hosted_email_enabled():
+            return {"configured": False, "hosted": True,
+                    "message": "Real email testing is unavailable in this demo."}
+        try:
+            recipient = _hosted_recipient()
+        except HTTPException as exc:
+            return {"configured": False, "hosted": True, "message": exc.detail}
+        return {**mailer.real_email_status(), "hosted": True,
+                "fixed_recipient": recipient, "inbox_url": "https://mail.google.com/mail/u/0/#inbox"}
     return mailer.real_email_status()
 
 
-@router.post("/admin/api/issues/{issue_id}/email-preview", dependencies=[Depends(_local_request)])
-def email_preview(issue_id: str, body: PreviewRequest, email: str = Depends(auth.web_user)):
+@router.post("/admin/api/issues/{issue_id}/email-preview", dependencies=[Depends(_preview_request)])
+def email_preview(issue_id: str, body: PreviewRequest, request: Request, email: str = Depends(auth.web_user)):
     auth.require_role(email, Role.STUDENT_AFFAIRS)
+    if config.HOSTED_DEMO:
+        if not _hosted_email_enabled():
+            raise HTTPException(404, "Real email testing is unavailable in this demo.")
     if not body.confirmed:
         raise HTTPException(422, "Confirm the recipient before sending a real email.")
     try:
         recipient = mailer.validate_recipient(body.recipient)
     except ValueError:
         raise HTTPException(422, "Enter one email address, without a name or a recipient list.") from None
+    if config.HOSTED_DEMO and recipient != _hosted_recipient():
+        raise HTTPException(403, "Hosted test emails can only be sent to the owner's configured test inbox.")
     return send_preview(issue_id, recipient, body.expected_revision, email)
 
 

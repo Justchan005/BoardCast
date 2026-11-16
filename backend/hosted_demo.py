@@ -1,33 +1,25 @@
-"""Access gate for a temporary, shared judge demo, never production identity.
+"""Public, temporary judge demo with isolated data and bounded actions.
 
-Opt-in only. The hosted demo uses disposable local records and the two seeded demo
-roles. A shared access code grants access to that complete demonstration. It does
-not represent independent Club or Student Affairs accounts.
+The two seeded roles are presentation choices, not independent authenticated
+accounts. No access code or sign-in is required to experience the demo.
 """
 from __future__ import annotations
 
-import asyncio
-import base64
 from collections import OrderedDict, deque
 from dataclasses import dataclass
-import hashlib
-import hmac
-import json
 import math
 import os
-import secrets
+import re
 import threading
 import time
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
 from starlette.datastructures import Headers
-from starlette.requests import ClientDisconnect, Request
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
+from starlette.requests import Request
+from starlette.responses import JSONResponse, RedirectResponse
 
 from . import config
 
-SESSION_SECONDS = 4 * 60 * 60
-MAX_LOGIN_BYTES = 4096
 DEMO_IDENTITIES = frozenset({"clubrep.demo@mail.apu.edu.my", "studentaffairs.demo@apu.edu.my"})
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 SERVICE_PREFIXES = ("/items", "/issues", "/reminders", "/extract")
@@ -51,61 +43,33 @@ def _origin(value: str) -> tuple[str, str, int]:
 @dataclass(frozen=True)
 class _Settings:
     origin: tuple[str, str, int]
-    access_code: str
-    signing_key: bytes
-    secure_cookie: bool
-    cookie_name: str
+    email_preview: bool = False
 
     @classmethod
     def from_environment(cls):
         if not config.LOCAL_MODE:
             raise RuntimeError("HOSTED_DEMO requires LOCAL_MODE=true and disposable demo data.")
-        code = os.environ.get("DEMO_ACCESS_CODE", "").strip()
-        secret = os.environ.get("DEMO_SESSION_SECRET", "").strip()
-        if not 16 <= len(code) <= 256:
-            raise RuntimeError("DEMO_ACCESS_CODE must contain between 16 and 256 characters.")
-        if len(secret) < 32:
-            raise RuntimeError("DEMO_SESSION_SECRET must contain at least 32 characters.")
         base = os.environ.get("PUBLIC_BASE_URL", config.PUBLIC_BASE_URL).strip()
         try:
             parts = urlsplit(base)
             origin = _origin(base)
             if parts.path not in {"", "/"} or parts.query or parts.fragment:
                 raise ValueError("Use an origin without a path")
-            secure = origin[0] == "https"
-            if not secure and origin[1] not in {"localhost", "127.0.0.1", "::1"}:
+            if origin[0] != "https" and origin[1] not in {"localhost", "127.0.0.1", "::1"}:
                 raise ValueError("HTTPS is required for a public demo")
         except ValueError:
             raise RuntimeError("PUBLIC_BASE_URL must be the demo's HTTPS origin. HTTP is allowed only for loopback QA.") from None
-        # Changing either setting invalidates every previously issued session.
-        key = hmac.new(secret.encode(), b"boardcast-judge-session\0" + code.encode(), hashlib.sha256).digest()
-        return cls(origin, code, key, secure,
-                   "__Host-boardcast_judge" if secure else "boardcast_judge_loopback")
-
-    def session(self) -> str:
-        now = int(time.time())
-        data = json.dumps({"iat": now, "exp": now + SESSION_SECONDS, "nonce": secrets.token_hex(16)},
-                          separators=(",", ":")).encode()
-        payload = base64.urlsafe_b64encode(data).decode().rstrip("=")
-        signature = hmac.new(self.signing_key, payload.encode(), hashlib.sha256).hexdigest()
-        return payload + "." + signature
-
-    def valid_session(self, value: str) -> bool:
-        if not value or len(value) > 512:
-            return False
-        try:
-            payload, signature = value.split(".")
-            expected = hmac.new(self.signing_key, payload.encode(), hashlib.sha256).hexdigest()
-            if not hmac.compare_digest(signature, expected):
-                return False
-            data = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-            now = int(time.time())
-            return (type(data.get("iat")) is int and type(data.get("exp")) is int
-                    and now - SESSION_SECONDS <= data["iat"] <= now + 30
-                    and now < data["exp"] <= data["iat"] + SESSION_SECONDS
-                    and isinstance(data.get("nonce"), str) and len(data["nonce"]) == 32)
-        except (ValueError, TypeError, AttributeError, UnicodeError):
-            return False
+        preview_flag = os.environ.get("HOSTED_EMAIL_PREVIEW", "false").strip().lower()
+        if preview_flag not in {"", "false", "0", "true", "1"}:
+            raise RuntimeError("HOSTED_EMAIL_PREVIEW must be true or false.")
+        email_preview = preview_flag in {"true", "1"}
+        if email_preview:
+            from .mailer import validate_recipient
+            try:
+                validate_recipient(os.environ.get("HOSTED_EMAIL_RECIPIENT", ""))
+            except ValueError:
+                raise RuntimeError("HOSTED_EMAIL_RECIPIENT must be one valid email address.") from None
+        return cls(origin, email_preview)
 
 
 class _Limiter:
@@ -135,24 +99,15 @@ class _Limiter:
             return max(retry, 0)
 
 
-def _login_page(error: str = "") -> str:
-    # Errors are fixed strings supplied by this module. Never reflect request data.
-    message = f'<p class="error" role="alert">{error}</p>' if error else ""
-    return """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow"><title>Enter the BoardCast judge demo</title>
-<style>*{box-sizing:border-box}html{color-scheme:light}body{margin:0;min-height:100vh;background:#102b4b;color:#172b43;font:17px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;display:grid;place-items:center;padding:24px}main{width:100%;max-width:530px;background:#fff;padding:clamp(26px,6vw,48px);border-radius:16px;box-shadow:0 18px 50px #06182955}h1{font-size:clamp(28px,5vw,38px);line-height:1.15;margin:0 0 20px;letter-spacing:-.025em;text-wrap:balance}p{margin:0 0 24px;color:#40566e}label{display:block;font-weight:650;margin-bottom:8px}input,button{width:100%;min-height:52px;border-radius:8px;font:inherit}input{border:1px solid #7890aa;padding:11px 14px;color:#172b43;background:#fff}button{margin-top:18px;border:1px solid #154c8d;background:#154c8d;color:#fff;font-weight:650;cursor:pointer}button:hover{background:#103e74}input:focus-visible,button:focus-visible{outline:3px solid #397bc8;outline-offset:4px}.note{font-size:14px;margin:24px 0 0}.error{color:#9b242c;background:#fff2f2;padding:12px 14px;border-radius:6px}::selection{background:#c9ddf7;color:#102b4b}</style></head>
-<body><main><h1>Try the BoardCast judge demo</h1><p>Follow a club submission through review and into Campus Weekly. Enter the access code shared by the team to begin.</p>""" + message + """
-<form action="/judge/login" method="post"><label for="access-code">Demo access code</label>
-<input id="access-code" name="access_code" type="password" autocomplete="current-password" minlength="16" maxlength="256" required autofocus>
-<button type="submit">Open BoardCast</button></form><p class="note">This is a shared demonstration with sample accounts. Use test content. Data can reset when the service restarts; email stays in the demo outbox.</p></main></body></html>"""
+def _email_preview_path(path: str) -> bool:
+    return re.fullmatch(r"/admin/api/issues/[^/]+/email-preview", path) is not None
 
 
-def _is_api(path: str) -> bool:
-    return path.startswith("/admin/api/") or path.startswith(SERVICE_PREFIXES) or path == "/openapi.json"
-
-
-def _blocked(path: str) -> bool:
+def _blocked(path: str, method: str = "POST") -> bool:
+    if path == "/admin/api/real-email/status" and method == "GET":
+        return False
+    if _email_preview_path(path) and method == "POST":
+        return False
     return (path.startswith(SERVICE_PREFIXES)
             or path.startswith("/admin/api/real-email") or path.startswith("/admin/email-setup")
             or (path.startswith("/admin/api/issues/") and "/email-preview" in path))
@@ -223,72 +178,39 @@ class HostedDemoMiddleware:
         headers = request.headers
         if not self._correct_host(headers):
             return await respond(JSONResponse({"detail": "Open the configured BoardCast demo address."}, status_code=400))
-        session = request.cookies.get(self.settings.cookie_name, "")
-        authenticated = self.settings.valid_session(session)
-        if (authenticated or path == "/judge/login") and method not in SAFE_METHODS and not self._same_origin(headers):
+        if method not in SAFE_METHODS and not self._same_origin(headers):
             return await respond(JSONResponse({"detail": "Submit this action from the BoardCast demo page."}, status_code=403))
 
-        if path == "/judge/login":
-            if method == "GET":
-                response = RedirectResponse("/demo", status_code=303) if authenticated else HTMLResponse(_login_page())
-                response.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'self'"
-                return await respond(response)
-            if method != "POST":
-                return await respond(JSONResponse({"detail": "Method not allowed"}, status_code=405, headers={"Allow": "GET, POST"}))
-            peer = scope.get("client") or ("unknown", 0)
-            retry = self.limiter.take([(("login", peer[0]), 10, 600), (("login-global",), 200, 600)])
-            if retry:
-                return await respond(HTMLResponse(_login_page("Too many sign-in attempts. Wait a few minutes, then try again."),
-                                                  status_code=429, headers={"Retry-After": str(retry)}))
-            if headers.get("content-type", "").split(";", 1)[0].lower() != "application/x-www-form-urlencoded":
-                return await respond(JSONResponse({"detail": "Use the access-code form."}, status_code=415))
-            try:
-                declared = headers.get("content-length")
-                if declared is not None and not 0 <= int(declared) <= MAX_LOGIN_BYTES:
-                    raise ValueError("size")
-                async def read_body():
-                    body = bytearray()
-                    async for chunk in request.stream():
-                        body.extend(chunk)
-                        if len(body) > MAX_LOGIN_BYTES:
-                            raise ValueError("size")
-                    return bytes(body)
-                raw = await asyncio.wait_for(read_body(), timeout=5)
-                fields = parse_qs(raw.decode("utf-8"), max_num_fields=8, strict_parsing=True)
-                codes = fields.get("access_code", [])
-                code = codes[0].strip() if len(codes) == 1 else ""
-            except (ValueError, UnicodeError, ClientDisconnect):
-                return await respond(JSONResponse({"detail": "The access-code form is invalid or too large."}, status_code=400))
-            except asyncio.TimeoutError:
-                return await respond(JSONResponse({"detail": "The sign-in request timed out. Try again."}, status_code=408))
-            if not hmac.compare_digest(code.encode(), self.settings.access_code.encode()):
-                return await respond(HTMLResponse(_login_page("The access code was not recognised. Check the code shared by the team."), status_code=401))
-            response = RedirectResponse("/demo", status_code=303)
-            response.set_cookie(self.settings.cookie_name, self.settings.session(), max_age=SESSION_SECONDS,
-                                secure=self.settings.secure_cookie, httponly=True, samesite="strict", path="/")
-            return await respond(response)
-
-        if not authenticated:
-            if method in {"GET", "HEAD"} and not _is_api(path):
-                return await respond(RedirectResponse("/judge/login", status_code=303))
-            return await respond(JSONResponse({"detail": "Enter the judge demo access code first."}, status_code=401))
-        if path == "/judge/logout":
-            if method != "POST":
-                return await respond(JSONResponse({"detail": "Use the Leave demo button."}, status_code=405, headers={"Allow": "POST"}))
-            response = RedirectResponse("/judge/login", status_code=303)
-            response.delete_cookie(self.settings.cookie_name, path="/", secure=self.settings.secure_cookie,
-                                   httponly=True, samesite="strict")
-            return await respond(response)
-        if _blocked(path):
+        # Keep old bookmarks and already-open forms usable after removing the gates.
+        if path in {"/judge/login", "/judge/owner", "/judge/logout"}:
+            if method not in {"GET", "HEAD", "POST"}:
+                return await respond(JSONResponse({"detail": "Method not allowed"}, status_code=405,
+                                                  headers={"Allow": "GET, HEAD, POST"}))
+            destination = "/admin?demo=student-affairs" if path == "/judge/owner" else "/demo"
+            return await respond(RedirectResponse(destination, status_code=303))
+        if _blocked(path, method):
             return await respond(JSONResponse({"detail": "This action is unavailable in the hosted judge demo."}, status_code=404))
         identities = headers.getlist("x-dev-user")
         if identities and (len(identities) != 1 or identities[0].strip().lower() not in DEMO_IDENTITIES):
             return await respond(JSONResponse({"detail": "Choose the Club or Student Affairs demo account."}, status_code=403))
         if path.startswith("/admin/api/") and not identities:
             return await respond(JSONResponse({"detail": "Choose the Club or Student Affairs demo account."}, status_code=401))
+        if path == "/admin/api/real-email/status" or _email_preview_path(path):
+            if identities[0].strip().lower() != "studentaffairs.demo@apu.edu.my":
+                return await respond(JSONResponse({"detail": "Use the Student Affairs demo account."}, status_code=403))
+            if _email_preview_path(path):
+                if not self.settings.email_preview:
+                    return await respond(JSONResponse({"detail": "Email testing is disabled."}, status_code=404))
+                # The recipient is fixed by server configuration. Cookies or role
+                # switching cannot reset this shared limit.
+                retry = self.limiter.take([(("email-preview-global",), 3, 3600)])
+                if retry:
+                    return await respond(JSONResponse({"detail": "The email test limit has been reached. Wait before sending again."},
+                                                      status_code=429, headers={"Retry-After": str(retry)}))
         if _expensive(method, path):
-            fingerprint = hashlib.sha256(session.encode()).hexdigest()
-            retry = self.limiter.take([(("ai-burst", fingerprint), 12, 300), (("ai-session", fingerprint), 40, 3600),
+            # Trust the ASGI peer, never a caller-supplied forwarding header.
+            peer = scope.get("client") or ("unknown", 0)
+            retry = self.limiter.take([(("ai-burst", peer[0]), 12, 300), (("ai-client", peer[0]), 40, 3600),
                                        (("ai-global",), 120, 3600)])
             if retry:
                 return await respond(JSONResponse({"detail": "The demo's AI request limit has been reached. Wait before trying another AI action."},

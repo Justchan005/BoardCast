@@ -6,6 +6,7 @@ from html.parser import HTMLParser
 from threading import Event
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from googleapiclient.errors import HttpError
 from httplib2 import Response
@@ -23,6 +24,7 @@ TO = "reader@example.com"
 def edition(tmp_path, monkeypatch):
     monkeypatch.setenv("AUDIT_DISABLED", "true")
     monkeypatch.setattr(config, "LOCAL_MODE", True)
+    monkeypatch.setattr(config, "HOSTED_DEMO", False)
     monkeypatch.setattr(config, "DEV_MODE", True)
     monkeypatch.setattr(config, "LOCAL_DATA_DIR", tmp_path)
     monkeypatch.setattr(config, "PUBLIC_BASE_URL", "http://127.0.0.1:8081")
@@ -182,6 +184,41 @@ class Links(HTMLParser):
         self.urls += [v for k, v in attrs if k in {"src", "href"}]
 
 
+@pytest.mark.parametrize("remote", [False, True])
+def test_classic_email_uses_a_fluid_container_with_outlook_fallback(edition, remote):
+    """The real Gmail adapter must preserve the same fluid wrapper as local previews."""
+    doc = store.get_issue(edition[0])
+    if remote:
+        _, html, _ = email_preview.render(doc)
+    else:
+        issue, plan = issue_builder.from_saved(doc)
+        html = issue_builder.render_email(issue, plan, None)
+
+    class Tables(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.tables, self.comments = [], []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "table":
+                self.tables.append(dict(attrs))
+
+        def handle_comment(self, data):
+            self.comments.append(data)
+
+    parsed = Tables()
+    parsed.feed(html)
+    paper, = [table for table in parsed.tables if table.get("data-newsletter-template") == "classic"]
+    styles = dict(rule.split(":", 1) for rule in paper["style"].split(";") if rule)
+    assert paper["width"] == "100%"
+    assert styles["width"] == "100%" and styles["max-width"] == "600px"
+    assert not any(table.get("width") == "600" or "width:600px" in table.get("style", "").split(";")
+                   for table in parsed.tables), "Gmail must never see a fixed-width 600px table"
+    assert any(comment.startswith("[if mso]") and 'width="600"' in comment for comment in parsed.comments)
+    assert "[if mso]></td></tr></table><![endif]" in parsed.comments
+    assert "Approved workshop" in html and "Volunteer opportunity" in html
+
+
 @pytest.mark.parametrize("template,custom", [("classic",False),("newspaper",False),("spotlight",False),("bulletin",False),("custom",True),("classic",True),("newspaper",True)])
 def test_remote_email_has_embedded_posters_and_usable_links_in_every_layout(edition, template, custom):
     doc = store.get_issue(edition[0])
@@ -281,3 +318,128 @@ def test_abandoned_claim_becomes_unknown_instead_of_resending(api, edition, monk
 def test_issue_metadata_contains_review_revision(api, edition):
     result = api.get("/admin/api/preview", headers={"X-Dev-User": SA})
     assert result.json()["issue"]["email_revision"] == payload(edition[0])["expected_revision"]
+
+
+@pytest.fixture
+def hosted_api(edition, monkeypatch):
+    """Exercise hosted endpoint safeguards without cookies, codes or real OAuth.
+
+    Middleware tests separately verify Host and same-origin checks.
+    """
+    monkeypatch.setattr(config, "HOSTED_DEMO", True)
+    monkeypatch.setattr(config, "PUBLIC_BASE_URL", "https://boardcast.example")
+    monkeypatch.setenv("HOSTED_EMAIL_PREVIEW", "true")
+    monkeypatch.setenv("HOSTED_EMAIL_RECIPIENT", "owner@example.com")
+    app = FastAPI()
+    app.include_router(email_preview.router)
+    with TestClient(app, base_url="https://boardcast.example") as client:
+        yield client
+
+
+@pytest.mark.parametrize("flag", ["true", "1"])
+def test_hosted_status_available_without_owner_code_to_student_affairs(hosted_api, edition, monkeypatch, flag):
+    client = hosted_api
+    monkeypatch.setenv("HOSTED_EMAIL_PREVIEW", flag)
+    response = client.get("/admin/api/real-email/status", headers={"X-Dev-User": SA})
+    assert response.status_code == 200
+    result = response.json()
+    assert result["configured"] and result["hosted"]
+    assert "owner_required" not in result
+    assert not client.cookies
+    assert result["fixed_recipient"] == "owner@example.com"
+    assert result["inbox_url"] == "https://mail.google.com/mail/u/0/#inbox"
+    assert client.get("/admin/api/real-email/status", headers={"X-Dev-User": REP}).status_code == 403
+    assert not edition[1]
+
+
+@pytest.mark.parametrize("flag", ["", "false", "treu"])
+def test_hosted_email_feature_requires_explicit_opt_in(hosted_api, edition, monkeypatch, flag):
+    client = hosted_api
+    monkeypatch.setenv("HOSTED_EMAIL_PREVIEW", flag)
+    response = client.get("/admin/api/real-email/status", headers={"X-Dev-User": SA})
+    assert response.status_code == 200
+    assert not response.json()["configured"]
+    assert "fixed_recipient" not in response.json() and "inbox_url" not in response.json()
+    assert post(client, edition[0], payload(edition[0], recipient="owner@example.com")).status_code == 404
+    assert not edition[1]
+
+
+@pytest.mark.parametrize("recipient", ["", "bad-secret-config", "first@example.com,second@example.com", "owner@example.com\r\nBcc:other@example.com"])
+def test_hosted_missing_or_invalid_fixed_recipient_fails_closed(hosted_api, edition, monkeypatch, recipient):
+    client = hosted_api
+    monkeypatch.setenv("HOSTED_EMAIL_RECIPIENT", recipient)
+    response = client.get("/admin/api/real-email/status", headers={"X-Dev-User": SA})
+    assert response.status_code == 200
+    assert not response.json()["configured"]
+    assert "fixed_recipient" not in response.json()
+    assert "bad-secret-config" not in response.text and "Bcc" not in response.text
+    assert post(client, edition[0], payload(edition[0], recipient="owner@example.com")).status_code == 503
+    assert not edition[1]
+
+
+def test_hosted_cannot_send_to_arbitrary_address_or_without_confirmation(hosted_api, edition):
+    client = hosted_api
+    issue_id, calls = edition
+    assert post(client, issue_id, payload(issue_id, recipient="someone-else@example.com")).status_code == 403
+    assert post(client, issue_id, payload(issue_id, recipient="owner+alias@example.com")).status_code == 403
+    assert post(client, issue_id, payload(issue_id, recipient="owner@example.com", confirmed=False)).status_code == 422
+    assert post(client, issue_id, payload(issue_id, recipient="owner@example.com"), actor=REP).status_code == 403
+    assert not calls
+
+
+def test_hosted_preview_without_codes_preserves_cid_images_and_deduplicates(hosted_api, edition):
+    client = hosted_api
+    issue_id, calls = edition
+    original = store.get_issue(issue_id)
+    body = payload(issue_id, recipient="OWNER@example.com")
+    response = post(client, issue_id, body)
+    assert response.status_code == 200 and response.json()["status"] == "sent"
+    assert len(calls) == 1 and calls[0][0] == "owner@example.com"
+    html, images = calls[0][2], calls[0][3]
+    assert "Test email from the shared BoardCast judge demo" in html
+    assert "BoardCast runs locally" not in html
+    assert "demo-only online-edition and calendar links have been omitted" in html
+    urls = Links(html).urls
+    assert len(images) == 1 and all("cid:" + cid in urls for cid in images)
+    assert not any("boardcast.example" in url for url in urls)
+    assert "https://forms.gle/real-registration" in urls
+    assert store.get_issue(issue_id) == original
+    assert not store.get_subscriber("owner@example.com")
+    assert post(client, issue_id, body).json()["duplicate"] and len(calls) == 1
+    assert not client.cookies
+    assert post(client, issue_id, body).json()["duplicate"] and len(calls) == 1
+
+
+def test_hosted_still_requires_current_review_revision(hosted_api, edition):
+    client = hosted_api
+    issue_id, calls = edition
+    body = payload(issue_id, recipient="owner@example.com")
+    store.db().collection("issues").document(issue_id).update({"newsletter_template": "newspaper"})
+    assert post(client, issue_id, body).status_code == 409
+    assert not calls
+
+
+def test_hosted_setup_guide_never_opens_even_for_localhost_host(hosted_api):
+    client = hosted_api
+    for headers in [{}, {"Host": "localhost"}]:
+        assert client.get("/admin/email-setup", headers=headers).status_code == 404
+
+
+def test_hosted_email_still_requires_local_demo_mode(hosted_api, edition, monkeypatch):
+    client = hosted_api
+    monkeypatch.setattr(config, "LOCAL_MODE", False)
+    assert client.get("/admin/api/real-email/status", headers={"X-Dev-User": SA}).status_code == 404
+    assert post(client, edition[0], payload(edition[0], recipient="owner@example.com")).status_code == 404
+    assert not edition[1]
+
+
+def test_hosted_sender_authorisation_failure_does_not_refer_to_blocked_setup_page(hosted_api, edition, monkeypatch):
+    client = hosted_api
+    def unauthorised(*args):
+        raise mailer.MailerConfigurationError("secret-token-provider-details")
+    monkeypatch.setattr(mailer, "send_real", unauthorised)
+    response = post(client, edition[0], payload(edition[0], recipient="owner@example.com"))
+    assert response.status_code == 200
+    assert response.json()["status"] == "failed"
+    assert "demo owner" in response.json()["message"]
+    assert "setup guide" not in response.text and "secret-token" not in response.text

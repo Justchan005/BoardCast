@@ -31,7 +31,7 @@ DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"  # skips token check
 LOCAL_MODE = os.getenv("LOCAL_MODE", "false").lower() == "true"
 DEV_MODE = DEV_MODE or LOCAL_MODE
 LOCAL_DATA_DIR = Path(os.getenv("LOCAL_DATA_DIR", Path(__file__).resolve().parent.parent / "local_data"))
-# Isolated, access-code-protected judge workspace. Never enabled for a normal local run.
+# Isolated, public judge workspace. Never enabled for a normal local run.
 HOSTED_DEMO = os.getenv("HOSTED_DEMO", "false").lower() == "true"
 
 # Gemini, three ways:

@@ -17,24 +17,25 @@ const issue = (revision = 'rev-1', status = 'preview') => ({
 const officer = {role: 'student_affairs', email: 'staff@apu.edu.my'};
 function fixture(request = async route => route.endsWith('/status')
   ? {configured: true, message: 'Gmail is configured.'}
-  : {status: 'sent', message: 'Gmail accepted the preview.'}) {
-  const elements = new Map(), calls = [];
+  : {status: 'sent', message: 'Gmail accepted the preview.'}, hostedDemo = false) {
+  const elements = new Map(), calls = [], popups = [];
   function get(id) {
     if (!elements.has(id)) elements.set(id, {
       hidden: false, disabled: false, checked: false, value: '', textContent: '', open: false,
       setAttribute(name, value) { this[name] = value; },
+      removeAttribute(name) { delete this[name]; },
       addEventListener(name, callback) { this['on' + name] = callback; },
       checkValidity() { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.value); },
     });
     return elements.get(id);
   }
   const context = vm.createContext({
-    document: {getElementById: get}, window: {},
+    URL, document: {body: {dataset: {hostedDemo: String(hostedDemo)}}, getElementById: get}, window: {open: (...args) => popups.push(args)},
     Staff: {api: async (route, options = {}) => { calls.push({route, ...options}); return request(route, options); }},
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'static', 'real-email.js'), 'utf8'), context);
   const panel = context.window.RealEmail;
-  return {get, panel, calls,
+  return {get, panel, calls, popups,
     async ready() { await panel.init(officer); panel.update({issue: issue()}); },
     address(value) { get('real-email-recipient').value = value; get('real-email-recipient').oninput(); },
     confirm() { get('real-email-confirm').checked = true; get('real-email-confirm').onchange(); },
@@ -150,6 +151,71 @@ async function run() {
       assert.equal(f.panel.isSending(), false);
     }
     console.log('PASS late outcomes do not overwrite a newer edition');
+  }
+  {
+    for (const response of [
+      {configured: true, hosted: true},
+      {configured: false, hosted: true, fixed_recipient: 'owner@example.com'},
+      {configured: true, hosted: true, fixed_recipient: 'not-an-email'},
+    ]) {
+      const unavailable = fixture(async () => response, true);
+      await unavailable.ready(); unavailable.confirm(); await unavailable.submit();
+      assert.equal(unavailable.calls.length, 1, 'configured sender and a valid fixed recipient are required');
+      assert.equal(unavailable.get('real-email-send').disabled, true);
+      assert.equal(unavailable.get('real-email-open-inbox').hidden, true);
+    }
+    console.log('PASS hosted unavailable or incomplete configuration blocks sending');
+  }
+  {
+    let configured = true;
+    const inbox = 'https://mail.google.com/mail/u/0/#inbox';
+    const f = fixture(async route => route.endsWith('/status')
+      ? configured ? {configured: true, hosted: true, fixed_recipient: 'Owner@Example.com', inbox_url: inbox}
+        : {configured: false, hosted: true}
+      : {status: 'sent', message: 'Gmail accepted this preview.'}, true);
+    await f.ready(); assert.equal(f.calls.length, 1);
+    assert.equal(f.get('real-email-recipient').value, 'owner@example.com');
+    assert.equal(f.get('real-email-recipient').readOnly, true);
+    assert.equal(f.get('real-email-send').disabled, true, 'configuration never substitutes for explicit confirmation');
+    assert.equal(f.get('real-email-open-inbox').hidden, true, 'Gmail link appears only after an accepted send');
+    f.address('tampered@example.com');
+    assert.equal(f.get('real-email-recipient').value, 'owner@example.com');
+    f.confirm(); await f.submit();
+    assert.deepEqual(JSON.parse(f.calls[1].body), {recipient: 'owner@example.com', confirmed: true, expected_revision: 'rev-1'});
+    assert.equal(f.get('real-email-open-inbox').hidden, false);
+    assert.equal(f.get('real-email-open-inbox').href, inbox);
+    assert.equal(f.popups.length, 0, 'successful sends must not open a browser popup');
+    f.confirm(); await f.submit();
+    assert.equal(f.calls.length, 2, 'same accepted hosted test must not be resent');
+    configured = false; await f.get('real-email-refresh').onclick();
+    assert.equal(f.get('real-email-recipient').value, '');
+    assert.equal(f.get('real-email-confirm').checked, false);
+    assert.equal(f.get('real-email-result').textContent, '');
+    assert.equal(f.get('real-email-open-inbox').hidden, true);
+    assert.equal(f.get('real-email-send').disabled, true);
+    f.panel.update({issue: issue('rev-2')});
+    assert.equal(f.get('real-email-open-inbox').hidden, true);
+    assert.equal(f.get('real-email-open-inbox').href, undefined);
+    f.panel.reset();
+    assert.equal(f.get('real-email-recipient').value, '');
+    console.log('PASS code-free hosted sending, fixed recipient, confirmation and duplicate protection');
+  }
+  {
+    for(const outcome of ['unknown', 'failed']) {
+      const f = fixture(async route => route.endsWith('/status')
+        ? {configured: true, hosted: true, fixed_recipient: 'owner@example.com', inbox_url: 'https://mail.google.com/mail/u/0/#inbox'}
+        : {status: outcome}, true);
+      await f.ready(); f.confirm(); await f.submit();
+      assert.equal(f.get('real-email-open-inbox').hidden, true);
+      assert.equal(f.calls.length, 2);
+    }
+    const f = fixture(async route => route.endsWith('/status')
+      ? {configured: true, hosted: true, fixed_recipient: 'owner@example.com', inbox_url: 'https://mail.google.com.attacker.example/mail/'}
+      : {status: 'sent'}, true);
+    await f.ready(); f.confirm(); await f.submit();
+    assert.equal(f.get('real-email-open-inbox').hidden, true);
+    assert.equal(f.get('real-email-open-inbox').href, undefined);
+    console.log('PASS unsuccessful outcomes and non-Gmail URLs never expose an inbox link');
   }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

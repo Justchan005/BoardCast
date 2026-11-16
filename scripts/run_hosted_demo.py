@@ -1,10 +1,11 @@
-"""Run the isolated, access-controlled judge demo. Never reads a local .env file."""
+"""Run the isolated, public judge demo. Never reads a local .env file."""
 from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
 from datetime import datetime
 import ipaddress
+import json
 import os
 from pathlib import Path
 import re
@@ -57,7 +58,7 @@ def configure_environment(environ: MutableMapping[str, str] | None = None, *,
     env["PYTHON_DOTENV_DISABLED"] = "1"
     if test_data_dir is not None and not local_test:
         raise ValueError("A custom data folder is only allowed with --local-test.")
-    for key, minimum in (("DEMO_ACCESS_CODE", 16), ("DEMO_SESSION_SECRET", 32), ("LINK_SECRET", 32)):
+    for key, minimum in (("LINK_SECRET", 32),):
         if len(env.get(key, "").strip()) < minimum:
             raise ValueError(f"Set {key} to a private value of at least {minimum} characters.")
     public_url = _public_url(env.get("PUBLIC_BASE_URL") or env.get("RENDER_EXTERNAL_URL", ""),
@@ -69,10 +70,37 @@ def configure_environment(environ: MutableMapping[str, str] | None = None, *,
     if not 1 <= port <= 65535:
         raise ValueError("PORT must be an integer from 1 to 65535.")
 
-    # The sandbox must never inherit Gmail, ADC or a campus/cloud service identity.
-    # Render supplies only the optional Gemini API key, not cloud service credentials.
+    preview_flag = env.get("HOSTED_EMAIL_PREVIEW", "false").strip().lower()
+    if preview_flag not in {"", "false", "0", "true", "1"}:
+        raise ValueError("HOSTED_EMAIL_PREVIEW must be true or false.")
+    email_preview = preview_flag in {"true", "1"}
+    if email_preview:
+        recipient = env.get("HOSTED_EMAIL_RECIPIENT", "").strip()
+        local, separator, domain = recipient.partition("@")
+        if (not separator or not recipient.isascii() or len(recipient) > 254 or len(local) > 64
+                or local.startswith(".") or local.endswith(".") or ".." in local
+                or not re.fullmatch(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+", local)
+                or "." not in domain or any(not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", part)
+                                           for part in domain.split("."))):
+            raise ValueError("HOSTED_EMAIL_RECIPIENT must be one valid email address without a display name.")
+        env["HOSTED_EMAIL_RECIPIENT"] = recipient.lower()
+        # If provided, only a complete JSON OAuth credential may survive the cleanup.
+        raw_token = env.get("GMAIL_TOKEN_JSON", "").strip()
+        if raw_token:
+            try:
+                token = json.loads(raw_token)
+                if not isinstance(token, dict) or not all(isinstance(token.get(key), str) and token[key].strip()
+                        for key in ("refresh_token", "client_id", "client_secret")):
+                    raise ValueError("Incomplete sender")
+            except (ValueError, TypeError):
+                raise ValueError("GMAIL_TOKEN_JSON must contain complete Gmail OAuth credentials.") from None
+
+    # Only the explicit email-preview opt-in may retain Gmail JSON credentials.
+    # ADC, token files and campus/cloud service identities are always cleared.
     for key in list(env):
         if key.upper().startswith(("GMAIL_", "CLOUDSDK_", "GOOGLE_APPLICATION_CREDENTIALS")):
+            if email_preview and key == "GMAIL_TOKEN_JSON":
+                continue
             env.pop(key, None)
     for key in ("GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT", "GOOGLE_CLOUD_QUOTA_PROJECT",
                 "GOOGLE_CLOUD_LOCATION", "POSTER_BUCKET", "BQ_AUDIT_TABLE",
@@ -86,6 +114,7 @@ def configure_environment(environ: MutableMapping[str, str] | None = None, *,
         "LOCAL_DATA_DIR": str(data_dir), "PUBLIC_BASE_URL": public_url,
         "BOARDCAST_API_URL": public_url, "API_AUDIENCE": public_url,
         "PREREVIEW_AUTO": "false", "WEB_CONCURRENCY": "1",
+        "HOSTED_EMAIL_PREVIEW": "true" if email_preview else "false",
         # Do not fall back to a token.json that happens to exist in the working tree.
         "GMAIL_TOKEN_FILE": str(data_dir / ".real-email-disabled"),
     })
@@ -153,11 +182,11 @@ def main(argv: list[str] | None = None) -> None:
         settings = configure_environment(local_test=args.local_test, test_data_dir=args.data_dir)
     except ValueError as exc:
         parser.error(str(exc))
-    # Gate setup must succeed before sample initialization or opening a port.
+    # Hosted configuration must succeed before sample initialization or opening a port.
     from backend.main import app
     seed_demo()
     import uvicorn
-    print("BoardCast judge sandbox: access code required; sample data; outbox delivery only.", flush=True)
+    print("BoardCast public judge demo: no access code; sample data; ordinary delivery stays in the outbox.", flush=True)
     print("Free-host data may reset when the service sleeps, restarts or redeploys.", flush=True)
     uvicorn.run(app, host="127.0.0.1" if args.local_test else "0.0.0.0", port=settings.port, workers=1)
 

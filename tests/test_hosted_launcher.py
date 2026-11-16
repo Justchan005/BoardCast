@@ -1,6 +1,7 @@
 """Hosted boot configuration and sample seeding, with no network or server startup."""
 from copy import deepcopy
 from datetime import datetime
+import json
 from pathlib import Path
 import sys
 from types import ModuleType
@@ -14,8 +15,6 @@ from scripts import run_hosted_demo as launcher
 def env(**overrides):
     return {
         "RENDER_EXTERNAL_URL": "https://boardcast-test.onrender.com",
-        "DEMO_ACCESS_CODE": "judge-test-code-123456",
-        "DEMO_SESSION_SECRET": "test-session-key-" * 3,
         "LINK_SECRET": "test-link-key-" * 3,
         **overrides,
     }
@@ -59,8 +58,8 @@ def test_hosted_settings_isolate_storage_and_credentials():
     assert values["GOOGLE_GENAI_USE_VERTEXAI"] == "false"
 
 
-@pytest.mark.parametrize("key", ["DEMO_ACCESS_CODE", "DEMO_SESSION_SECRET", "LINK_SECRET"])
-def test_missing_or_short_access_secrets_prevent_startup(key):
+@pytest.mark.parametrize("key", ["LINK_SECRET"])
+def test_missing_or_short_link_signing_secret_prevents_startup(key):
     for value in ("", "too-short", " " * 40):
         with pytest.raises(ValueError, match=key):
             launcher.configure_environment(env(**{key: value}))
@@ -152,3 +151,53 @@ def test_entrypoint_uses_one_worker_and_never_starts_server_in_test(monkeypatch)
     monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: calls.append((app, kwargs)))
     launcher.main([])
     assert calls == ["seed", (fake_main.app, {"host": "0.0.0.0", "port": 10000, "workers": 1})]
+
+
+def preview_env(**overrides):
+    return env(HOSTED_EMAIL_PREVIEW="true",
+               HOSTED_EMAIL_RECIPIENT="Test.Owner@example.com", **overrides)
+
+
+def test_explicit_email_test_only_retains_json_sender_credentials():
+    token = json.dumps({"refresh_token": "test-refresh", "client_id": "test-client", "client_secret": "test-secret"})
+    values = preview_env(GMAIL_TOKEN_JSON=token, GMAIL_TOKEN_FILE="private-token.json",
+                       GMAIL_OTHER_SECRET="unexpected", GOOGLE_APPLICATION_CREDENTIALS="adc.json")
+    launcher.configure_environment(values)
+    assert values["GMAIL_TOKEN_JSON"] == token
+    assert values["GMAIL_TOKEN_FILE"].endswith(".real-email-disabled")
+    assert "GMAIL_OTHER_SECRET" not in values
+    assert "GOOGLE_APPLICATION_CREDENTIALS" not in values
+    assert values["HOSTED_EMAIL_RECIPIENT"] == "test.owner@example.com"
+    assert values["HOSTED_EMAIL_PREVIEW"] == "true"
+
+
+@pytest.mark.parametrize("key,value", [
+    ("HOSTED_EMAIL_PREVIEW", "yes"), ("HOSTED_EMAIL_RECIPIENT", ""),
+    ("HOSTED_EMAIL_RECIPIENT", "one@example.com,two@example.com"),
+    ("HOSTED_EMAIL_RECIPIENT", "Owner <one@example.com>"),
+    ("HOSTED_EMAIL_RECIPIENT", "one@example.com\r\nBcc: two@example.com"),
+    ("GMAIL_TOKEN_JSON", "not json"), ("GMAIL_TOKEN_JSON", "{}"),
+])
+def test_unsafe_email_opt_in_stops_launcher(key, value):
+    values = preview_env()
+    values[key] = value
+    with pytest.raises(ValueError):
+        launcher.configure_environment(values)
+
+
+@pytest.mark.parametrize("legacy_value", [None, "", "old-unused-value"])
+def test_demo_and_email_start_without_access_codes(legacy_value):
+    values = preview_env()
+    if legacy_value is not None:
+        for key in ("DEMO_ACCESS_CODE", "DEMO_OWNER_CODE", "DEMO_SESSION_SECRET"):
+            values[key] = legacy_value
+    launcher.configure_environment(values)
+    assert values["HOSTED_EMAIL_PREVIEW"] == "true"
+
+
+def test_sender_details_do_not_enable_email_without_explicit_opt_in():
+    values = preview_env(GMAIL_TOKEN_JSON="a token that must be removed")
+    values["HOSTED_EMAIL_PREVIEW"] = "false"
+    launcher.configure_environment(values)
+    assert values["HOSTED_EMAIL_PREVIEW"] == "false"
+    assert "GMAIL_TOKEN_JSON" not in values
