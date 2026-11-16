@@ -4,17 +4,18 @@ Clubs and APU offices submit a poster once. Gemini reads it, a pre-review agent 
 
 APU Cloud Innovation Hackathon 2026 · Track 2: Intelligent Automation & Digital Transformation
 
-**Judge demo:** [Open BoardCast](https://boardcast-judge-demo-b0q3.onrender.com/demo). No access code is required. Try **Club → Student Affairs → Outbox**. In Student Affairs, **Send test email** sends the selected preview to the configured test inbox after confirmation, with no owner unlock step.
+**Live Judge Demo:** [Open BoardCast](https://boardcast-judge-demo-b0q3.onrender.com/demo). No access code is required, including for Send test email.
 
 | Read this | For |
 | --- | --- |
 | `docs/ARCHITECTURE.md` | The diagram: inputs, model choices, tools, data, actions, outputs, controls |
 | `docs/PROMPTS.md` | Every prompt, its context and how its output is checked |
+| `docs/RENDER_DEMO.md` | Hosted judge demo on Render and judge access instructions |
 | `docs/SUBMISSION_PACK.md` | What to submit, the video plan and the final-round plan |
 | `docs/evidence/` | Output checks and run logs generated from real runs |
 | `BOARDCAST_SPEC.md` | The original build spec (this README is newer where they differ) |
 
-**Status.** The whole workflow runs on a laptop with a Gemini API key: submission portal, poster reading, pre-review agent, review desk, run trace, insights, newsletter build and a local email outbox. Student Affairs can also explicitly send a newsletter preview to one chosen address through a connected Gmail sender. That transport has mocked tests; live Gmail delivery, Google Cloud deployment, the Gemini Enterprise chat surface and the Teams bot are not verified end to end. `/demo` shows the same distinction inside the app.
+**Status.** The whole workflow runs on a laptop with a Gemini API key: submission portal, poster reading, pre-review agent, review desk, run trace, insights, newsletter build and a local email outbox. A hosted judge demo is also deployed on Render at [Open BoardCast](https://boardcast-judge-demo-b0q3.onrender.com/demo) (see `docs/RENDER_DEMO.md` for details). Student Affairs can also explicitly send a newsletter preview to one chosen address through a connected Gmail sender. That transport has mocked tests; live Gmail delivery, Google Cloud deployment, the Gemini Enterprise chat surface and the Teams bot are not verified end to end. `/demo` shows the same distinction inside the app.
 
 ---
 
@@ -55,8 +56,37 @@ Club rep ──► /submit (web) or chat (ADK)
 | Chat coordinator | `agent/boardcast_agent/agent.py` | `prompts/coordinator.md` | Routes to the two sub-agents; no tools |
 | Chat intake | same | `prompts/intake.md` | `read_attached_poster`, `submit_item`, `fix_item`, `list_pending` |
 | Chat review | same | `prompts/review.md` | `list_pending`, `decide_item`, `hold_issue` |
+| BoardCast Assistant | `backend/assistant.py`, `static/assistant.js` | `prompts/assistant.md` | Read tools (`get_dashboard`, `list_submissions`, `get_submission`, `get_edition`, `list_upcoming_events`, `get_engagement`, `get_insights`, `get_submission_rules`) and confirmation-only `prepare_decision`, `prepare_bulk_approval` |
 
 The pre-review agent has no tool that changes a submission. The chat intake agent has no approval tool. The API checks the caller's role on every request, so asking for an approval in chat does not grant one.
+
+## BoardCast Assistant (in-app chat for clubs and Student Affairs)
+
+Every staff page (`/admin`, `/admin/club`, `/submit`, `/admin/insights`, run traces) has an
+**Ask BoardCast** button. It opens a chat that answers from live records and can act, with a person
+confirming every change.
+
+| Ask | What happens |
+| --- | --- |
+| "How many posters do I need to approve today?" | Waiting, arrived today, AI-flagged and approved counts, as a card with next steps |
+| "Approve everything that looks ready" | A batch card: items with no open problems and no AI red flags are ticked; flagged ones are listed separately |
+| "Approve Hackathon Prep Night" / "Return it because the venue isn't booked" | A confirmation card with the poster, the AI flags (tick to acknowledge) or the reason, editable before sending |
+| "What's in the next Campus Weekly?" | Edition status with Build preview, Publish to outbox (local demo) and Hold buttons, each confirmed |
+| Club rep: "Why was my poster returned?" | The saved reason and a Correct button that opens the submission |
+| "What do I need to submit an event?", "How many students clicked Register?" | Rules from the same code checks; click and reminder counts |
+
+**Controls.** Gemini chooses which read tools to call (function calling, at most 5 turns). The tools
+that look like actions, `prepare_decision` and `prepare_bulk_approval`, only return a card. The
+person's click calls the same `/admin/api/items/{id}/decision` endpoint as the review desk, so the
+role check, the stale-version check, the "reason required" rule and the AI red-flag acknowledgement
+all still apply. Club reps only see their club, and Student Affairs-only tools are not offered to
+them. Cards are built by code from stored records, so titles, counts and flags never come from model
+text. Decisions made from chat appear in the run trace with `via: assistant`, and assistant calls
+appear in Insights with their tokens and cost. Without Gemini, or if it fails twice, a
+deterministic router answers the same common questions with the same tools ("Quick answers mode").
+
+Demo data: `python -m scripts.seed_assistant_demo` adds four pending submissions built from the demo
+posters in `../evidence/`. One deliberately differs from its poster, so the pre-review flags it.
 
 ## Run trace, output checks and insights
 
@@ -176,6 +206,7 @@ the same Firestore-compatible storage format when running in the cloud.
 
 | Screen | Route | Who |
 | --- | --- | --- |
+| Hosted judge walkthrough | [Open BoardCast](https://boardcast-judge-demo-b0q3.onrender.com/demo) | Judges, reviewers (no access code required) |
 | Guided local walkthrough | `/demo` | Local demo users |
 | Poster submission or explicit manual entry; all three content types | `/submit` | Club reps, Student Affairs |
 | Subscribe (APU email + 6-digit code) | `/subscribe` | Students |
@@ -188,6 +219,7 @@ the same Firestore-compatible storage format when running in the cloud.
 | Rejection email: title, reason, and how to correct and resubmit | `templates/rejection_email.html` | The original uploader |
 | 1-hour event reminder | `templates/reminder_email.html`, hourly `POST /reminders/run` | Students who clicked Register / Add to calendar in their email |
 | Weekly email | `templates/weekly_email.html` | Students |
+| BoardCast Assistant: in-app chat that answers and prepares confirmable actions | **Ask BoardCast** on every staff page | Club reps, Student Affairs |
 | Chat | ADK locally; Gemini Enterprise pending access/verification | Club reps, Student Affairs |
 | Run trace and run-log export | `/admin/trace/{item_id}` | Student Affairs; club reps for their own items |
 | Insights: counts, tokens, cost | `/admin/insights` | Student Affairs |

@@ -21,7 +21,8 @@ from . import auth, config, extract, issue_builder, prereview, store, trace
 router = APIRouter()
 
 PURPOSES = {"extract": "Read the poster", "verify_poster": "Second read (pre-review tool)",
-            "prereview": "Pre-review agent turns", "choose_spotlight": "Choose the spotlight event"}
+            "prereview": "Pre-review agent turns", "choose_spotlight": "Choose the spotlight event",
+            "assistant": "BoardCast Assistant (chat)"}
 
 
 def _aware(ts):

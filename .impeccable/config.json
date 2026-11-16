@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "templates/submit.html"
+        ],
+        "createdAt": "2026-11-16T16:53:47.537Z",
+        "reason": "Claude verified: #poster-preview is a hidden upload preview whose src is set by static/submit.js after a poster is chosen; pre-existing, not a broken image"
+      }
+    ]
+  }
+}

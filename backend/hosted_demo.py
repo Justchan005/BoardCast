@@ -119,7 +119,8 @@ def _expensive(method: str, path: str) -> bool:
     return (path == "/admin/api/demo/preview"
             or path == "/admin/api/submissions" or path.startswith("/admin/api/submissions/")
             or (path.startswith("/admin/api/uploads/") and path.rstrip("/").endswith("/extract"))
-            or (path.startswith("/admin/api/items/") and path.rstrip("/").endswith("/prereview")))
+            or (path.startswith("/admin/api/items/") and path.rstrip("/").endswith("/prereview"))
+            or path == "/admin/api/assistant/chat")
 
 
 class HostedDemoMiddleware:

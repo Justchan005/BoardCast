@@ -149,11 +149,13 @@ class Decision(BaseModel):
     retry_notification: bool = False
     expected_updated_at: str | None = None
     acknowledge_flags: bool = False     # the reviewer confirms they checked the AI brief's red flags
+    channel: Literal["review", "assistant"] = "review"   # where the person pressed the button (run trace)
 
 
 @router.post("/admin/api/items/{item_id}/decision")
 def decide(item_id: str, body: Decision, email: str = Depends(auth.web_user)):
-    return reviews.decide_item(item_id, body.decision, body.note, email, via="web",
+    via = "assistant" if body.channel == "assistant" else "web"
+    return reviews.decide_item(item_id, body.decision, body.note, email, via=via,
                                retry_notification=body.retry_notification, expected_updated_at=body.expected_updated_at,
                                acknowledge_flags=body.acknowledge_flags)
 

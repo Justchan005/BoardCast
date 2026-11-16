@@ -2,7 +2,7 @@
 {% block title %}Club report · BoardCast{% endblock %}
 {% block head %}
 {% if client_id %}<script src="https://accounts.google.com/gsi/client" async defer></script>{% endif %}
-<script src="/static/staff.js?v=20261113-2"></script>
+<script src="/static/staff.js?v=20261117-1"></script><link rel="stylesheet" href="/static/assistant.css?v=20261117-1"><script src="/static/assistant.js?v=20261117-4" defer></script>
 {% endblock %}
 {% block topbar_right %}<div class="row"><span id="who" class="muted">Staff sign-in</span><button id="signout" class="text-button" type="button" hidden>Switch account</button></div>{% endblock %}
 {% block content %}
@@ -115,5 +115,6 @@ Staff.init(async () => {
 });
 document.getElementById("refresh").addEventListener("click", refresh);
 window.addEventListener("boardcast:signout", () => notice(""));
+window.addEventListener("boardcast:data-changed", refresh);   // an action taken in the assistant
 </script>
 {% endblock %}

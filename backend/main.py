@@ -26,7 +26,7 @@ from shared.schemas import ItemStatus, ItemType, Role
 
 from pathlib import Path
 
-from . import audit, auth, checks, config, delivery, email_preview, extract, insights, issue_builder, mailer, prereview, reminders, reviews, runlog, store, tokens, trace, web, submission
+from . import assistant, audit, auth, checks, config, delivery, email_preview, extract, insights, issue_builder, mailer, prereview, reminders, reviews, runlog, store, tokens, trace, web, submission
 from .ics import build_ics
 from .qr_rules import apply_qr_links
 
@@ -36,6 +36,7 @@ app.include_router(submission.router)
 app.include_router(runlog.router)
 app.include_router(insights.router)
 app.include_router(email_preview.router)
+app.include_router(assistant.router)
 # Windows registry associations can label .js as text/plain. Serve scripts with
 # their actual MIME type so browsers can enforce X-Content-Type-Options safely.
 mimetypes.init()
@@ -399,6 +400,17 @@ def poster_image(item_id: str, t: Optional[str] = None):
     img.save(out, "JPEG", quality=82, optimize=True)
     cache = "public, max-age=3600" if public else "private, no-store"   # unapproved posters are never cached
     return Response(out.getvalue(), media_type="image/jpeg", headers={"Cache-Control": cache})
+
+
+FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1F4FD8"/>'
+           '<rect x="8" y="8" width="16" height="11" rx="1.5" fill="none" stroke="#fff" stroke-width="2.2"/>'
+           '<path d="M13 24h6M16 19v5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>')
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Browsers request this path regardless of the page's inline icon; answer with the same mark."""
+    return Response(FAVICON, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/healthz")

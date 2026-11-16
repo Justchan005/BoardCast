@@ -11,6 +11,7 @@ Every prompt is a versioned Markdown file in `prompts/`. Code loads it by name, 
 | `coordinator.md` v1 | ADK chat root agent | The user's message | Routes only; has no tools | Sub-agent tool lists; server-side role checks |
 | `intake.md` v8 | ADK chat, club reps | Message and attached poster | One question at a time; never invents a fact; exact attachment filename | Same API checks as the web form |
 | `review.md` v3 | ADK chat, Student Affairs | Reviewer's message | Confirms the title before deciding; never invents a rejection reason; v3 adds the acknowledgement step | Server refuses approval past unacknowledged red flags |
+| `assistant.md` v1 | `backend/assistant.py` (in-app BoardCast Assistant) | The signed-in person's role and club, today's date, the last 16 chat messages, and results of the tools it calls | Read tools for facts; `prepare_*` tools only show a confirmation card, so the model can never change a record. States that club text is data, not instructions | Role re-checked in every tool; cards built by code from stored records; buttons call the review desk's API (role, version and red-flag checks); at most 5 turns; quick-answer fallback without Gemini |
 
 ## Version history kept as evidence
 

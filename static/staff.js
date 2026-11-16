@@ -3,11 +3,13 @@ const Staff = (() => {
   const KEY = "boardcast.staff";
   let session = {token: null, devUser: null};
   let epoch = 0;
+  let current = null;   // the signed-in person, for page add-ons such as the assistant
   function staleSession() { const error = new Error('The account changed.'); error.stale = true; return error; }
   try { session = JSON.parse(sessionStorage.getItem(KEY)) || session; } catch (_) {}
   function persist() { try { sessionStorage.setItem(KEY, JSON.stringify(session)); } catch (_) {} }
   function signOut(message = "") {
     epoch++;
+    current = null;
     session = {token: null, devUser: null};
     try { sessionStorage.removeItem(KEY); } catch (_) {}
     document.getElementById("app")?.setAttribute("hidden", "");
@@ -82,6 +84,8 @@ const Staff = (() => {
         who.setAttribute("data-role", roleName);   // narrow screens show the role alone
         who.setAttribute("title", me.email);
         document.getElementById("signout")?.removeAttribute("hidden");
+        current = me;
+        try { window.dispatchEvent(new CustomEvent("boardcast:signin", {detail: me})); } catch (_) {}   // add-ons never block sign-in
         await onReady(me);
       } catch (e) {
         if (e.stale || loginEpoch !== epoch) return;
@@ -95,5 +99,5 @@ const Staff = (() => {
     document.getElementById("signout")?.addEventListener("click", () => signOut());
     if (session.token || session.devUser) start();
   }
-  return {api, el, init, signOut, safeLink};
+  return {api, el, init, signOut, safeLink, current: () => current};
 })();

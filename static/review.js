@@ -5,6 +5,9 @@
   const demoPlace = hostedDemo ? 'demo' : 'local';
   let me, items = [], status = 'pending', selected = null, issue = null, selectionRequest = 0;
   let publishingBusy = false;
+  // /admin?item=<id> (from the assistant's "Open in desk") opens that submission once.
+  let deepLink = null;
+  try { deepLink = new URLSearchParams(location.search).get('item'); } catch (_) {}
   function updatePublishDisabled() {
     const blocked = Newsletter.blocksPublish();
     const emailBusy = window.RealEmail?.isSending() || false;
@@ -56,6 +59,9 @@
   async function load() {
     items = (await api('/admin/api/queue')).items;
     for (const s of ['pending','draft','approved']) $('count-' + s).textContent = items.filter(i => i.status === s).length;
+    const linked = deepLink && items.find(i => i.id === deepLink);
+    deepLink = null;
+    if (linked) { const tab = document.querySelector('[role=tab][data-status="' + linked.status + '"]'); if (tab) { selectTab(tab); selected = linked.id; } }
     renderList();
     if (me.role === 'student_affairs') await loadIssue();
     else $('issue-card').hidden = true;
@@ -206,6 +212,7 @@
   const tabs=[...document.querySelectorAll('[role=tab]')];
   function selectTab(button) {status=button.dataset.status; selected=null; for(const b of tabs){b.setAttribute('aria-selected',String(b===button));b.tabIndex=b===button?0:-1;} $('list').setAttribute('aria-labelledby',button.id);renderList(true);}
   tabs.forEach((button,index)=>{button.onclick=()=>selectTab(button);button.onkeydown=ev=>{let next;if(ev.key==='ArrowRight')next=(index+1)%tabs.length;if(ev.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;if(ev.key==='Home')next=0;if(ev.key==='End')next=tabs.length-1;if(next!=null){ev.preventDefault();tabs[next].focus();selectTab(tabs[next]);}};});
+  window.addEventListener('boardcast:data-changed',()=>{ if (me) load().catch(e=>{ if(!e.stale) notice(e.message,'bad'); }); });
   window.addEventListener('boardcast:signout',()=>{clearTimeout(briefTimer);selectionRequest++;items=[];selected=null;issue=null;Newsletter.reset();window.RealEmail?.reset();});
   Staff.init(async who=>{me=who;window.RealEmail?.reset();$('app').hidden=false;try{await load();if(me.role==='student_affairs'){await Newsletter.init({onStateChange:updatePublishDisabled,onSaved:loadIssue});await window.RealEmail?.init(who,updatePublishDisabled);updatePublishDisabled();}else Newsletter.reset();}catch(e){if(!e.stale)notice(e.message,'bad');}});
 })();
